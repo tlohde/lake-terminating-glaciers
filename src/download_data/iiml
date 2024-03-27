@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+
+cd ../../data
+
+# for iiml data (how et al., (2021) wiesman et al., (2021))
+mkdir -p iiml
+wget -e robots=off --mirror --no-parent -r -P iiml/ https://dap.ceda.ac.uk/neodc/esacci/glaciers/data/IIML/Greenland/v1/2017// 

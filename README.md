@@ -2,6 +2,19 @@
 
 ## contents
 
+### code
+#### animate_potential_study_sites.py
+
+- takes points from [potential_study_sites_v1](data/potential_study_sites_v1.geojson) 
+- gets all collection-2 level 2 landsat for july-sept (inc) with eo:cloud_cover < 20 %
+- apply bit mask for cirrus, cloud, cloud shadow
+- group by year and get median
+- animate annual medians and save .gif [here](results/intermediate/study_site_animations/)
+
+### data
+
+
+
 ## data sources
 
 ### ice marginal lakes

@@ -1,16 +1,16 @@
-import geopandas as gpd
+# import geopandas as gpd
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
 import numpy as np
 import pystac_client
 import planetary_computer
-import stackstac
-import shapely
 import pyproj
-import rioxarray as rio
-import xrspatial as xrs
-import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
-from tqdm import tqdm
+import rioxarray as rio  # noqa # pylint: disable=unused-import
+import shapely
+import stackstac
+# from tqdm import tqdm
 import warnings
+import xrspatial as xrs
 warnings.filterwarnings("ignore")
 
 
@@ -40,7 +40,7 @@ def get_annual_median_mosaic(geo,
                              timeperiod="1975-01-01/2030-12-31",
                              months=[7, 8, 9],
                              ):
-    
+
     """
     takes shapely point geometry (geo), buffers it by distance
     (buffer_dist) (in metres, whilst ensuring that buffering is done
@@ -66,7 +66,7 @@ def get_annual_median_mosaic(geo,
     # query landsat collection on planetary computer
     # with cloud cover % filter
     _search = catalog.search(
-        collections=["sentinel-2-l2a"], # "landsat-c2-l2"
+        collections=["sentinel-2-l2a"],  # "landsat-c2-l2"
         intersects=poi,
         datetime=timeperiod,
         query={"eo:cloud_cover": {"lt": 20}})

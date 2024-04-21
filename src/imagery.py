@@ -8,29 +8,11 @@ import pyproj
 import rioxarray as rio  # noqa # pylint: disable=unused-import
 import shapely
 import stackstac
+from utils import shapely_reprojector
 # from tqdm import tqdm
 import warnings
 import xrspatial as xrs
 warnings.filterwarnings("ignore")
-
-
-def shapely_reprojector(geo,
-                        src_crs=3413,
-                        target_crs=4326):
-    """
-    reproject shapely point (geo) from src_crs to target_crs
-    avoids having to create geopandas series to handle crs transformations
-    """
-
-    assert isinstance(
-        geo, shapely.geometry.point.Point), 'input geometry must be a point'
-    transformer = pyproj.Transformer.from_crs(
-        src_crs,
-        target_crs,
-        always_xy=True
-    )
-    _x, _y = geo.coords.xy
-    return shapely.Point(*transformer.transform(_x, _y))
 
 
 def get_annual_median_mosaic(geo,

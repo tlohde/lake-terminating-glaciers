@@ -4,6 +4,7 @@ from functools import partial
 import itslive
 import geopandas as gpd
 import numpy as np
+import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
 from matplotlib.cm import ScalarMappable
 import shapely
@@ -390,15 +391,15 @@ class CentreLiner():
 
         _annual_v['y1'] = (_annual_v['median']
                            + (1.4826 * _annual_v['median_abs_deviation'])
-        )
+                           )
         _annual_v['y2'] = (_annual_v['median']
                            - (1.4826 * _annual_v['median_abs_deviation'])
-        )
+                           )
         norm = Normalize(*_annual_v['year'].agg(['min', 'max']))
         cmap = plt.get_cmap('viridis')
 
         for year in _annual_v['year'].unique():
-            _idx = _annual_v['year']==year
+            _idx = _annual_v['year'] == year
             ax.plot(_annual_v.loc[_idx, 'cumul_dist'],
                     _annual_v.loc[_idx, 'median'],
                     c=cmap(norm(year)))
@@ -414,8 +415,8 @@ class CentreLiner():
     def plotter(self):
 
         fig, axs = plt.subplot_mosaic([['v_map', 'rgb'],
-                                        ['profile', 'profile']],
-                                        figsize=[8,8])
+                                       ['profile', 'profile']],
+                                      figsize=[8, 8])
 
         self.median.isel(year=-1)['v'].plot(ax=axs['v_map'])
         axs['v_map'].plot(*self.tidy_stream.coords.xy, c='r')
@@ -426,7 +427,7 @@ class CentreLiner():
 
         self.rgb_img.plot.imshow(rgb='band', ax=axs['rgb'])
         axs['rgb'].plot(
-            *box(*V[1].median.isel(year=-1).rio.bounds()).exterior.coords.xy,
+            *box(*self.median.isel(year=-1).rio.bounds()).exterior.coords.xy,
             c='tab:orange', lw=0.5
             )
 
@@ -434,4 +435,4 @@ class CentreLiner():
             axs[ax].set_aspect('equal')
             axs[ax].set_axis_off()
 
-        v_profile_plotter(self, ax=axs['profile'])
+        self.v_profile_plotter(self, ax=axs['profile'])

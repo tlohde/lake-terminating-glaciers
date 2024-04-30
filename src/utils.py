@@ -83,7 +83,8 @@ def piecewise_fit(X, Y, maxcount):
         seg = np.full(count - 1, (xmax - xmin) / count)
 
         px_init = np.r_[np.r_[xmin, seg].cumsum(), xmax]
-        py_init = np.array([Y[np.abs(X - x) < (xmax - xmin) * 0.1].mean() for x in px_init])
+        py_init = np.array([Y[np.abs(X - x) < (xmax - xmin) * 0.1].mean()
+                            for x in px_init])
 
         def func(p):
             seg = p[:count - 1]
@@ -91,24 +92,25 @@ def piecewise_fit(X, Y, maxcount):
             px = np.r_[np.r_[xmin, seg].cumsum(), xmax]
             return px, py
 
-        def err(p): # This is RSS / n
+        def err(p):  # This is RSS / n
             px, py = func(p)
             Y2 = np.interp(X, px, py)
             return np.mean((Y - Y2)**2)
 
-        r = optimize.minimize(err, x0=np.r_[seg, py_init], method='Nelder-Mead')
-    
-        # Compute AIC/ BIC. 
+        r = optimize.minimize(err,
+                              x0=np.r_[seg, py_init],
+                              method='Nelder-Mead')
+
+        # Compute AIC/ BIC.
         AIC = n * np.log10(err(r.x)) + 4 * count
         BIC = n * np.log10(err(r.x)) + 2 * count * np.log(n)
-        
-        if((BIC < BIC_) & (AIC < AIC_)): # Continue adding complexity.
+
+        if ((BIC < BIC_) & (AIC < AIC_)):  # Continue adding complexity.
             r_ = r
             AIC_ = AIC
             BIC_ = BIC
-        else: # Stop.
+        else:  # Stop.
             count = count - 1
             break
-        
-    return func(r_.x) ## Return the last (n-1)
-    
+
+    return func(r_.x)  # Return the last (n-1)

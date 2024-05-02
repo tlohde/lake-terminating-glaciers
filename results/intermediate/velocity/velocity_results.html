@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>velocity_results.md</title>
+<meta http-equiv="Content-type" content="text/html;charset=UTF-8">
+
+<style>
+/* https://github.com/microsoft/vscode/blob/master/extensions/markdown-language-features/media/markdown.css */
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+body {
+	font-family: var(--vscode-markdown-font-family, -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif);
+	font-size: var(--vscode-markdown-font-size, 14px);
+	padding: 0 26px;
+	line-height: var(--vscode-markdown-line-height, 22px);
+	word-wrap: break-word;
+}
+
+#code-csp-warning {
+	position: fixed;
+	top: 0;
+	right: 0;
+	color: white;
+	margin: 16px;
+	text-align: center;
+	font-size: 12px;
+	font-family: sans-serif;
+	background-color:#444444;
+	cursor: pointer;
+	padding: 6px;
+	box-shadow: 1px 1px 1px rgba(0,0,0,.25);
+}
+
+#code-csp-warning:hover {
+	text-decoration: none;
+	background-color:#007acc;
+	box-shadow: 2px 2px 2px rgba(0,0,0,.25);
+}
+
+body.scrollBeyondLastLine {
+	margin-bottom: calc(100vh - 22px);
+}
+
+body.showEditorSelection .code-line {
+	position: relative;
+}
+
+body.showEditorSelection .code-active-line:before,
+body.showEditorSelection .code-line:hover:before {
+	content: "";
+	display: block;
+	position: absolute;
+	top: 0;
+	left: -12px;
+	height: 100%;
+}
+
+body.showEditorSelection li.code-active-line:before,
+body.showEditorSelection li.code-line:hover:before {
+	left: -30px;
+}
+
+.vscode-light.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.15);
+}
+
+.vscode-light.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.40);
+}
+
+.vscode-light.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-dark.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.4);
+}
+
+.vscode-dark.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.60);
+}
+
+.vscode-dark.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-high-contrast.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 160, 0, 0.7);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 160, 0, 1);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+img {
+	max-width: 100%;
+	max-height: 100%;
+}
+
+a {
+	text-decoration: none;
+}
+
+a:hover {
+	text-decoration: underline;
+}
+
+a:focus,
+input:focus,
+select:focus,
+textarea:focus {
+	outline: 1px solid -webkit-focus-ring-color;
+	outline-offset: -1px;
+}
+
+hr {
+	border: 0;
+	height: 2px;
+	border-bottom: 2px solid;
+}
+
+h1 {
+	padding-bottom: 0.3em;
+	line-height: 1.2;
+	border-bottom-width: 1px;
+	border-bottom-style: solid;
+}
+
+h1, h2, h3 {
+	font-weight: normal;
+}
+
+table {
+	border-collapse: collapse;
+}
+
+table > thead > tr > th {
+	text-align: left;
+	border-bottom: 1px solid;
+}
+
+table > thead > tr > th,
+table > thead > tr > td,
+table > tbody > tr > th,
+table > tbody > tr > td {
+	padding: 5px 10px;
+}
+
+table > tbody > tr + tr > td {
+	border-top: 1px solid;
+}
+
+blockquote {
+	margin: 0 7px 0 5px;
+	padding: 0 16px 0 10px;
+	border-left-width: 5px;
+	border-left-style: solid;
+}
+
+code {
+	font-family: Menlo, Monaco, Consolas, "Droid Sans Mono", "Courier New", monospace, "Droid Sans Fallback";
+	font-size: 1em;
+	line-height: 1.357em;
+}
+
+body.wordWrap pre {
+	white-space: pre-wrap;
+}
+
+pre:not(.hljs),
+pre.hljs code > div {
+	padding: 16px;
+	border-radius: 3px;
+	overflow: auto;
+}
+
+pre code {
+	color: var(--vscode-editor-foreground);
+	tab-size: 4;
+}
+
+/** Theming */
+
+.vscode-light pre {
+	background-color: rgba(220, 220, 220, 0.4);
+}
+
+.vscode-dark pre {
+	background-color: rgba(10, 10, 10, 0.4);
+}
+
+.vscode-high-contrast pre {
+	background-color: rgb(0, 0, 0);
+}
+
+.vscode-high-contrast h1 {
+	border-color: rgb(0, 0, 0);
+}
+
+.vscode-light table > thead > tr > th {
+	border-color: rgba(0, 0, 0, 0.69);
+}
+
+.vscode-dark table > thead > tr > th {
+	border-color: rgba(255, 255, 255, 0.69);
+}
+
+.vscode-light h1,
+.vscode-light hr,
+.vscode-light table > tbody > tr + tr > td {
+	border-color: rgba(0, 0, 0, 0.18);
+}
+
+.vscode-dark h1,
+.vscode-dark hr,
+.vscode-dark table > tbody > tr + tr > td {
+	border-color: rgba(255, 255, 255, 0.18);
+}
+
+</style>
+
+<style>
+/* Tomorrow Theme */
+/* http://jmblog.github.com/color-themes-for-google-code-highlightjs */
+/* Original theme - https://github.com/chriskempson/tomorrow-theme */
+
+/* Tomorrow Comment */
+.hljs-comment,
+.hljs-quote {
+	color: #8e908c;
+}
+
+/* Tomorrow Red */
+.hljs-variable,
+.hljs-template-variable,
+.hljs-tag,
+.hljs-name,
+.hljs-selector-id,
+.hljs-selector-class,
+.hljs-regexp,
+.hljs-deletion {
+	color: #c82829;
+}
+
+/* Tomorrow Orange */
+.hljs-number,
+.hljs-built_in,
+.hljs-builtin-name,
+.hljs-literal,
+.hljs-type,
+.hljs-params,
+.hljs-meta,
+.hljs-link {
+	color: #f5871f;
+}
+
+/* Tomorrow Yellow */
+.hljs-attribute {
+	color: #eab700;
+}
+
+/* Tomorrow Green */
+.hljs-string,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-addition {
+	color: #718c00;
+}
+
+/* Tomorrow Blue */
+.hljs-title,
+.hljs-section {
+	color: #4271ae;
+}
+
+/* Tomorrow Purple */
+.hljs-keyword,
+.hljs-selector-tag {
+	color: #8959a8;
+}
+
+.hljs {
+	display: block;
+	overflow-x: auto;
+	color: #4d4d4c;
+	padding: 0.5em;
+}
+
+.hljs-emphasis {
+	font-style: italic;
+}
+
+.hljs-strong {
+	font-weight: bold;
+}
+</style>
+
+<style>
+/*
+ * Markdown PDF CSS
+ */
+
+ body {
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif, "Meiryo";
+	padding: 0 12px;
+}
+
+pre {
+	background-color: #f8f8f8;
+	border: 1px solid #cccccc;
+	border-radius: 3px;
+	overflow-x: auto;
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
+}
+
+pre:not(.hljs) {
+	padding: 23px;
+	line-height: 19px;
+}
+
+blockquote {
+	background: rgba(127, 127, 127, 0.1);
+	border-color: rgba(0, 122, 204, 0.5);
+}
+
+.emoji {
+	height: 1.4em;
+}
+
+code {
+	font-size: 14px;
+	line-height: 19px;
+}
+
+/* for inline code */
+:not(pre):not(.hljs) > code {
+	color: #C9AE75; /* Change the old color so it seems less like an error */
+	font-size: inherit;
+}
+
+/* Page Break : use <div class="page"/> to insert page break
+-------------------------------------------------------- */
+.page {
+	page-break-after: always;
+}
+
+</style>
+
+<script src="https://unpkg.com/mermaid/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast')
+          ? 'dark'
+          : 'default'
+    });
+  </script>
+<h1 id="ice-surface-velocity">ice surface velocity</h1>
+<h2 id="method">method</h2>
+<h3 id="input-data">input data</h3>
+<p>a point near the terminus</p>
+<ul>
+<li>point is buffered by 8-10 km and the ITS_LIVE velocity cubes that intersect this area identified</li>
+</ul>
+<h3 id="cube-processing">cube processing</h3>
+<ul>
+<li>cubes clipped to area and filtered:
+<ul>
+<li>335 days &lt;= <code>date_dt</code> &lt; 395 days
+<ul>
+<li>this selects for velocity fields that approximate average annual velocity</li>
+</ul>
+</li>
+<li>the v_x and v_y components are filtered independently of one another</li>
+<li>values that are +/- 5 * MAD are removed</li>
+<li>this filtering is <em>similar</em> to that used by <a href="https://doi.org/10.5194/tc-17-1567-2023">nanni et al., 2023</a></li>
+</ul>
+</li>
+</ul>
+<h3 id="centreline-creation">centreline creation</h3>
+<ul>
+<li>the v_x and v_y component fields from the most recent complete year (2022) are used to generate the (centre) flowline that extends up/down from input point.</li>
+<li>these flowlines are exported and manually tidied.</li>
+</ul>
+<h3 id="sampling">sampling</h3>
+<ul>
+<li>the filtered velocity cubes are sampled at 100 points evenly distributed along the length of the flowline</li>
+<li>these samples are grouped by the year of their <code>mid_date</code> (the mid-date of the two images used to generate the velocity field) and the median and (normalized) median absolute deviation calculated.</li>
+</ul>
+<h3 id="still-to-do-would-like-to-do">still to do (/would like to do):</h3>
+<ul>
+<li>timeseries of velocities near the terminus with <code>date_dt</code> &lt;= 30 days ish (for seeing seasonal variability)</li>
+<li>look at timing of any speed up / slow downs</li>
+<li>look at latitude &amp; east/west as potential</li>
+<li>bed / surface topo</li>
+<li>something that looks a bit like <a href="https://doi.org/10.5194/tc-16-219-2022">ashmore et al., 2022</a> for modes of variability</li>
+</ul>
+<div style="page-break-after: always;"></div>
+<h2 id="results">results</h2>
+<h3 id="outlet-0">outlet #0</h3>
+<p><img src="0_annual_velocity_profiles.png" alt="img0"></p>
+<ul>
+<li>slow flowing</li>
+<li>behaving like a land-terminating outlet</li>
+<li>velocity decreases toward the terminus
+<ul>
+<li>suggesting lake has minimal influence</li>
+</ul>
+</li>
+<li>has slowed over the last 20 years</li>
+</ul>
+<h3 id="outlet-1">outlet #1</h3>
+<p><img src="1_annual_velocity_profiles.png" alt="img1_"></p>
+<ul>
+<li>moderate speed, with a very slight uptick in velocity towards the terminus</li>
+<li>lake likely has <em>some</em> influence</li>
+<li>has slowed in recent years</li>
+</ul>
+<h3 id="outlet-2">outlet #2</h3>
+<p><img src="2_annual_velocity_profiles.png" alt="img2_"></p>
+<ul>
+<li>slowed in recent years</li>
+<li>curious velocity profile
+<ul>
+<li>check bed topo here</li>
+</ul>
+</li>
+<li>lake <em>might</em> have some influence here</li>
+</ul>
+<h3 id="outlet-3">outlet #3</h3>
+<p><img src="3_annual_velocity_profiles.png" alt="img3_"></p>
+<ul>
+<li>this outlet is part ice-sheet fed, part ice-cap fed</li>
+<li>despite the reasonably sharp curve, maintains high (ish) velocity</li>
+<li>lake is clearly doing something</li>
+<li>has accelerated in recent years</li>
+<li>upglacier (6-10 km) however, it is presently flowing slower than pre-2000</li>
+</ul>
+<h3 id="outlet-4">outlet #4</h3>
+<p><img src="4_annual_velocity_profiles.png" alt="img4_"></p>
+<ul>
+<li>slow flowing oulet</li>
+<li>velocity used to increase toward the terminus ~2015</li>
+<li>now velocity profile more akin to land-terminating</li>
+</ul>
+<h3 id="outlet-5">outlet #5</h3>
+<p><img src="5_annual_velocity_profiles.png" alt="img5_"></p>
+<ul>
+<li>slow flowing</li>
+<li>slight uptick in velocity toward terminus</li>
+<li>very modest acceleration in recent years</li>
+</ul>
+<h3 id="outlet-6">outlet #6</h3>
+<p><img src="6_annual_velocity_profiles.png" alt="img6_"></p>
+<ul>
+<li>we know all about this one</li>
+</ul>
+<h3 id="outlet-7">outlet #7</h3>
+<p><img src="7_annual_velocity_profiles.png" alt="img7_"></p>
+<ul>
+<li>interesting</li>
+<li>has slowed down since the 1990s
+<ul>
+<li>but the profile does show a tick up in velocity toward the terminus since ~2018</li>
+<li>and has accelerated since early 2010s</li>
+<li>NOTE: end of centreline might not be bang on the terminus - hence the drop off at ~0.5 km</li>
+</ul>
+</li>
+</ul>
+<h3 id="outlet-8">outlet #8</h3>
+<p><img src="8_annual_velocity_profiles.png" alt="img8_"></p>
+<ul>
+<li>little distributary, which (surprisingly) does have an area near the terminus of elevated surface velocity
+<ul>
+<li>which have increased since the 2000s</li>
+<li>but aren't greater than those measured in the 1990s</li>
+</ul>
+</li>
+</ul>
+<h3 id="outlet-11">outlet #11</h3>
+<p><img src="11_annual_velocity_profiles.png" alt="img11"></p>
+<ul>
+<li>useless</li>
+</ul>
+<h3 id="outlet-12">outlet #12</h3>
+<p><img src="12_annual_velocity_profiles.png" alt="img12"></p>
+<ul>
+<li>even more useless</li>
+</ul>
+
+</body>
+</html>

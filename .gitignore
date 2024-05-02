@@ -3,3 +3,5 @@ data/
 _nothing.md
 src/__pycache__
 *.gif
+*.tif.aux.xml
+*.tif

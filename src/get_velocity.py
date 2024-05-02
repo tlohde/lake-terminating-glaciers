@@ -1,3 +1,4 @@
+import cmcrameri.cm as cmc
 import pandas as pd
 import imagery
 from functools import partial
@@ -6,7 +7,9 @@ import geopandas as gpd
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
+from matplotlib.collections import LineCollection
 from matplotlib.cm import ScalarMappable
+from matplotlib.dates import date2num
 import shapely
 from shapely import LineString, Point, box
 from shapely.ops import unary_union
@@ -19,27 +22,32 @@ import utils
 class Tools():
 
     @staticmethod
-    def filter_ddt(ds, ddt_range):
+    def filter_ddt(ds_df, ddt_range):
         '''
         convenience method for filtering itslive xr.Dataset(DataArray)
         by 'date_dt' along mid_date dimension
-        ds: xr.Dataset / DataArray
+        ds_df: xr.Dataset / DataArray OR pandas dataframe
         ddt_range: tuble of pandas timestrings for setting
         upper and lower range of filter values
         returns tuple (filtered dataset, and index for safe keeping)
         '''
         lower, upper = [pd.Timedelta(dt) for dt in ddt_range]
-        idx = ((ds['date_dt'] >= lower) & (ds['date_dt'] < upper))
-        return ds.sel(mid_date=(idx)), idx
+        idx = ((ds_df['date_dt'] >= lower) & (ds_df['date_dt'] < upper))
+        if isinstance(ds_df, (xr.core.dataset.Dataset,
+                              xr.core.dataarray.DataArray)):
+            return ds_df.sel(mid_date=(idx)), idx
+        if isinstance(ds_df, pd.core.frame.DataFrame):
+            return ds_df[idx], idx
 
     @staticmethod
-    def filter_mad(ds, var, axis, n):
+    def filter_mad(ds_df, var, axis=None, n=5):
         '''
         for filtering / removing outliers
         values that are `n` * median absolute deviation (mad)
         away from the median are swapped with removed
 
-        ds: input dataset
+        ds_df: input dataset (can be either xarray dataset/array)
+        or pandas dataframe
         var: which variable in dataset is to be filtered
         axis: along which axis (*singular*) is median to be calculated
         can be either int or named coordinate axis
@@ -50,36 +58,90 @@ class Tools():
         note: outliers are filled with nans rather than removed
         because in case where filtering vx and vy components separately,
         then computing resultant velocity, need to ensure indices still
-        line up. *also* dropping nans from 3d array is messy.
+        line up. *also* dropping nans from 3d array is messy
         '''
-        if isinstance(axis, int):
-            dim = ds[var].dims[axis]
-        elif isinstance(axis, str):
-            dim = axis
-            axis = [i for i, k in enumerate(ds[var].dims)
-                    if k == dim][0]
 
-        mad = stats.median_abs_deviation(ds[var].data,
-                                         axis=axis,
-                                         nan_policy='omit')
-        modified_z = (ds[var] - ds[var].median(dim=dim)) / mad
+        if isinstance(ds_df, (xr.core.dataset.Dataset,
+                              xr.core.dataarray.DataArray)):
+            if isinstance(axis, int):
+                dim = ds_df[var].dims[axis]
+            elif isinstance(axis, str):
+                dim = axis
+                axis = [i for i, k in enumerate(ds_df[var].dims)
+                        if k == dim][0]
 
-        return xr.where(modified_z < n, ds[var], np.nan)
+            mad = stats.median_abs_deviation(ds_df[var].data,
+                                             axis=axis,
+                                             nan_policy='omit')
+            modified_z = (ds_df[var] - ds_df[var].median(dim=dim)) / mad
+            print(f'MAD: {mad}')
+            return xr.where(modified_z < n, ds_df[var], np.nan)
+
+        elif isinstance(ds_df, pd.core.frame.DataFrame):
+            mad = stats.median_abs_deviation(ds_df[var],
+                                             nan_policy='omit')
+            modified_z = (ds_df[var] - ds_df[var].median()) / mad
+            print(f'MAD: {mad}')
+            return ds_df.where(modified_z < n)
+
+    @staticmethod
+    def filter_df(self, ddt_range, **kwargs):
+        '''
+        bundles both filter_ddt with filter_mad
+        for a given distance along centreline
+        filters centreline velocity df (self.line_df) by date_dt
+        and then by MAD
+        if no distance (_val) is supplied it function auto-magically
+        picks distance along centreline that has the highest velocity
+        and uses that
+        returns filtered dataframe. that will contain nans
+        '''
+        _df, _ = Tools.filter_ddt(self.line_df,
+                                  ddt_range)
+
+        _var = kwargs.get('var', 'v')
+        _val = kwargs.get('val', None)
+        _col = kwargs.get('col', 'cumul_dist')
+        _mad = kwargs.get('mad', 5)
+
+        if _val is None:
+            print('no val supplied - finding distance where v is peak')
+            _df = _df.loc[_df[_col] == (_df
+                                        .set_index(_col)
+                                        .groupby('mid_date')[_var]
+                                        .idxmax()
+                                        .value_counts()
+                                        .idxmax())
+                          ].sort_values(by='mid_date')
+        else:
+            _df = utils.nearest(_df, _col, _val).sort_values(by='mid_date')
+
+        if _mad:
+            _df = Tools.filter_mad(_df, _var, n=_mad)
+            _df = _df.sort_values(by='mid_date')
+
+        return _df
 
 
 class CentreLiner():
     '''
     class for handling velocity data from itslive
     '''
-    def __init__(self, geo, buff_dist, index, **kwargs):
+    def __init__(self,
+                 geo,
+                 buff_dist,
+                 index,
+                 filter_cube=False,
+                 get_annual_median=False,
+                 get_rgb=False,
+                 **kwargs):
         '''
-        geo: shapely polygon of area of interest
+        geo: shapely polygon of area of interest or shapely linestring
         index: int. useful index (for matching class instance with
         geojson/geodataframe consisting of multiple aois)
+        buff_dist: area around point/linestring to get velocity and imagery
         '''
-
         self.index = index
-
         if isinstance(geo, shapely.geometry.point.Point):
             self.point = geo
             self.geo = geo.buffer(buff_dist,
@@ -100,25 +162,35 @@ class CentreLiner():
         # use itslive api to get list of dictionaries of zarr velocity cubes
         self.cubes = itslive.velocity_cubes.find_by_polygon(self.coords)
 
+        print('getting cubes')
         self.get_cubes()
         # resolution (in m) of velocity dataset
         self.res = np.mean(np.abs(self.dss[0].rio.resolution()))
 
-        self.ddt_range = kwargs.get('ddt_range',
-                                    ('335d', '395d'))
+        self.ddt_range = kwargs.get('ddt_range', ('335d', '395d'))
         self.n = kwargs.get('n', 5)
 
-        # run class functions
-        self.filter_v_components(ddt_range=self.ddt_range, n=self.n)
-        self.get_annual_median(['v', 'vx', 'vy'])
-        self.clean_median()
+        if filter_cube:
+            print('filtering velocity cube')
+            self.filter_v_components(ddt_range=self.ddt_range, n=self.n)
+
+        if get_annual_median:
+            print('generating annual median field')
+            self.get_annual_median(['v', 'vx', 'vy'])
+
+        if get_rgb:
+            print('getting rgb mosaic')
+            self.get_rgb_mosaic()
 
         if isinstance(geo, shapely.geometry.point.Point):
+            print('generating stream line')
+            self.get_annual_median()
+            self.clean_median()
             self.get_stream()
 
+        print('sampling along centreline')
         self.pair_points_with_box()
         self.sample_along_line()
-        self.get_rgb_mosaic()
 
     def get_cubes(self):
         '''
@@ -191,10 +263,10 @@ class CentreLiner():
         for ds in self.filtered_v:
             medians.append(ds[vars]
                            .groupby(ds.mid_date.dt.year)
-                           .median()
-                           .compute())
+                           .median())  # .compute()) can compute here...
         self.median = xr.merge(medians)
 
+    # stream / centreline work fucntions
     def clean_median(self):
         '''
         for tidy stream delineation want to get interpolate nans
@@ -207,7 +279,6 @@ class CentreLiner():
         self.clean_vx.data = utils.twoD_interp(self.clean_vx.data)
         self.clean_vy.data = utils.twoD_interp(self.clean_vy.data)
 
-    # stream / centreline work fucntions
     def _detectLoop(self, xVals, yVals):
         """ Detect closed loops and nodes in a streamline. """
         x = xVals[-1]
@@ -291,6 +362,8 @@ class CentreLiner():
         get flow line extending up/down from point x0, y0
         from http://web.mit.edu/speth/Public/streamlines.py
         '''
+        self.clean_median()
+
         if not x0:
             x0 = self.point.x
         if not y0:
@@ -314,7 +387,7 @@ class CentreLiner():
         returns self.grouped which is a list of geodataframes
         with index `cumul_dist` and the point
         '''
-        self.bboxes = [box(*ds.rio.bounds()) for ds in self.filtered_v]
+        self.bboxes = [box(*ds.rio.bounds()) for ds in self.dss]
         self.points = [self.tidy_stream.interpolate(i, normalized=True)
                        for i in np.arange(0, 1, 0.01)]
         self.cumul_dist = [self.tidy_stream.project(p) for p in self.points]
@@ -339,11 +412,22 @@ class CentreLiner():
         self.grouped = _grouped
 
     def sample_along_line(self):
+        '''
+        sample (unfiltered) cube along centreline
+        _quicker_ to do the filtering (both date_dt & outlier)
+        after sampling along the line that way fewer
+        medians to calculate rather than doing so for
+        the whole domain
+        returns pandas dataframe
+        '''
         _dfs = []
-        for _ps, _ds in zip(self.grouped, self.filtered_v):
+        for _ps, _ds in zip(self.grouped, self.dss):
             # consider using .coarsen() here as way of sampling around
-            # centreline vertices
-            _sampled_ds = (_ds['v']
+            _sampled_ds = (_ds[['v', 'vx', 'vy',
+                                'v_error', 'vx_error', 'vy_error',
+                                'acquisition_date_img1',
+                                'acquisition_date_img2',
+                                'date_dt']]
                            .sel(x=_ps['x'].to_xarray(),
                                 y=_ps['y'].to_xarray(),
                                 method='nearest')
@@ -353,7 +437,8 @@ class CentreLiner():
             _sampled_ds.reset_index(inplace=True)
             _sampled_ds['year'] = _sampled_ds.mid_date.dt.year
             _dfs.append(_sampled_ds)
-        self.v_line_df = pd.concat(_dfs)
+        self.line_df = pd.concat(_dfs).sort_values(by=['mid_date',
+                                                       'cumul_dist'])
 
     def get_rgb_mosaic(self):
         _minx, _miny, _maxx, _maxy = unary_union(self.bboxes).exterior.bounds
@@ -381,8 +466,18 @@ class CentreLiner():
             b=self.composite.sel(band='B02')
             )
 
-    def v_profile_plotter(self, ax):
-        _annual_v = (self.v_line_df.groupby(
+
+class Plotters():
+
+    @staticmethod
+    def annual_v_profile(self, ax, **kwargs):
+        '''
+        convenience method for plotting velocities
+        along centreline coloured by year
+        '''
+        cmap = kwargs.get('cmap', cmc.batlow_r)
+
+        _annual_v = (self.line_df.groupby(
             ['cumul_dist', 'year']
             )['v'].agg(['median',
                         partial(stats.median_abs_deviation,
@@ -396,7 +491,6 @@ class CentreLiner():
                            - (1.4826 * _annual_v['median_abs_deviation'])
                            )
         norm = Normalize(*_annual_v['year'].agg(['min', 'max']))
-        cmap = plt.get_cmap('viridis')
 
         for year in _annual_v['year'].unique():
             _idx = _annual_v['year'] == year
@@ -412,11 +506,15 @@ class CentreLiner():
                             label=year)
         plt.colorbar(ScalarMappable(cmap=cmap, norm=norm), ax=ax)
 
+    @staticmethod
     def plotter(self):
-
-        fig, axs = plt.subplot_mosaic([['v_map', 'rgb'],
-                                       ['profile', 'profile']],
-                                      figsize=[8, 8])
+        '''
+        plot median velocity field from most recent year
+        rgb image from recent year & annual velocity profiles
+        '''
+        self.fig, axs = plt.subplot_mosaic([['v_map', 'rgb'],
+                                            ['profile', 'profile']],
+                                           figsize=[8, 8])
 
         self.median.isel(year=-1)['v'].plot(ax=axs['v_map'])
         axs['v_map'].plot(*self.tidy_stream.coords.xy, c='r')
@@ -435,4 +533,84 @@ class CentreLiner():
             axs[ax].set_aspect('equal')
             axs[ax].set_axis_off()
 
-        self.v_profile_plotter(self, ax=axs['profile'])
+        Plotters.annual_v_profile(self, ax=axs['profile'])
+
+    @staticmethod
+    def date_dt_bars(self, ddt_range, ax, **kwargs):
+        '''
+        adds line collection to axes
+        x-limits of each line are the dates of the two images used
+        to generate the velocity field
+        y-value of each line is the velocity estimate
+
+        this function has ability to first filter the cube using date_dt
+        and then basic outlier detection with MAD - does this by making
+        a call to `Tools.filter_df()`
+
+        linecollection then constructed and added straight to axes
+        '''
+        _c = kwargs.get('c', None)
+        _lw = kwargs.get('lw', 1)
+        _var = kwargs.get('var', 'v')
+        _df = Tools.filter_df(self, ddt_range, **kwargs)
+
+        _v_collection = LineCollection(list(zip(
+            list(zip(date2num(_df['acquisition_date_img1']), _df[_var])),
+            list(zip(date2num(_df['acquisition_date_img2']), _df[_var]))
+            )),
+                                       linewidth=_lw, color=_c)
+
+        ax.add_collection(_v_collection, autolim=False)
+
+        ax.set(
+            ylim=_df[_var].agg([np.nanmin, np.nanmax]),
+            xlim=(
+                date2num(_df['acquisition_date_img1'].min()),
+                date2num(_df['acquisition_date_img2'].max())
+                )
+            )
+
+    def rolling_median(self, ddt_range, ax, **kwargs):
+        '''
+        adds rolling median to axes
+
+        this function has ability to first filter the cube using date_dt
+        and then basic outlier detection with MAD - does this by making
+        a call to `Tools.filter_df()`
+
+        can specify:
+            variable to plot (defaults to `var='v'`)
+            how strict the outlier detection `mad=5`
+            window size of rolling median (in days) `window='30d'`
+            minimum number of observations that must fall
+        within window in order to return a result `min_periods=5`
+            line color `c='r'`
+            line width `lw=2`
+        '''
+        _c = kwargs.get('c', 'tab:blue')
+        _lw = kwargs.get('lw', 1)
+        _val = kwargs.get('val', None)
+        _col = kwargs.get('col', None)
+        _var = kwargs.get('var', 'v')
+        _mad = kwargs.get('mad', 5)
+        _window = kwargs.get('window', '21d')
+        _min_periods = kwargs.get('min_periods', 5)
+
+        _df = Tools.filter_df(self,
+                              ddt_range,
+                              var=_var,
+                              col=_col,
+                              val=_val,
+                              mad=_mad)
+
+        _df = _df.loc[~_df[_var].isna()]
+        (_df.rolling(_window,
+                     on='mid_date',
+                     min_periods=_min_periods)[_var, 'mid_date']
+         .median()
+         .plot(x='mid_date',
+               y=_var,
+               c=_c,
+               lw=_lw,
+               ax=ax)
+         )

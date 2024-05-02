@@ -114,3 +114,11 @@ def piecewise_fit(X, Y, maxcount):
             break
 
     return func(r_.x)  # Return the last (n-1)
+
+
+def nearest(df, col, val):
+    '''
+    finds value closest to `val` from column `col` in dataframe `df`
+    and returns dataframe that only contains rows where col==val
+    '''
+    return df.loc[df[col] == min(df[col], key=lambda x: abs(x - val))]

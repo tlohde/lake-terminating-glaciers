@@ -3,4 +3,6 @@ data/
 _nothing.md
 src/__pycache__
 results/intermediate/velocity/*.tif*
+# results/intermediate/velocity/*.png*
 *.gif
+*.html

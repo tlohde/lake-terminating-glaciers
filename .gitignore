@@ -2,6 +2,9 @@ data/
 .vscode/
 _nothing.md
 src/__pycache__
+results/intermediate/velocity/*.tif*
+# results/intermediate/velocity/*.png*
 *.gif
+*.html
 *.tif.aux.xml
 *.tif

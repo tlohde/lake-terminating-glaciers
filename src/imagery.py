@@ -8,35 +8,16 @@ import pyproj
 import rioxarray as rio  # noqa # pylint: disable=unused-import
 import shapely
 import stackstac
+from utils import shapely_reprojector
 # from tqdm import tqdm
 import warnings
 import xrspatial as xrs
 warnings.filterwarnings("ignore")
 
 
-def shapely_reprojector(geo,
-                        src_crs=3413,
-                        target_crs=4326):
-    """
-    reproject shapely point (geo) from src_crs to target_crs
-    avoids having to create geopandas series to handle crs transformations
-    """
-
-    assert isinstance(
-        geo, shapely.geometry.point.Point), 'input geometry must be a point'
-    transformer = pyproj.Transformer.from_crs(
-        src_crs,
-        target_crs,
-        always_xy=True
-    )
-    _x, _y = geo.coords.xy
-    return shapely.Point(*transformer.transform(_x, _y))
-
-
 def get_annual_median_mosaic(geo,
                              buffer_dist=None,
                              src_crs=None,
-                             target_crs=None,
                              timeperiod="1975-01-01/2030-12-31",
                              months=[7, 8, 9],
                              ):
@@ -56,7 +37,7 @@ def get_annual_median_mosaic(geo,
     poi = shapely_reprojector(
         geo,
         src_crs,
-        target_crs
+        4326
     )
 
     catalog = pystac_client.Client.open(
@@ -92,36 +73,25 @@ def get_annual_median_mosaic(geo,
     # because median mosiac - only want summer images - to
     # minimize seasonal variations
     # clip image to bounding box of circle created by buffer_dist
-    poi = shapely_reprojector(poi, target_crs, target_epsg)
+    poi = shapely_reprojector(poi, 4326, target_epsg)
 
     _ds = (_ds
            .sel(time=_ds.time.dt.month.isin(months))
            .rio.clip_box(*poi.buffer(buffer_dist).bounds))
-
-    # return _ds
-    # apply bit masks for
-    # dilated cloud, cirrus, cloud, cloud shadow
-    # _mask_bitfields = [1, 2, 3, 4]
-    # _bitmask = 0
-    # for _field in _mask_bitfields:
-    #     _bitmask |= 1 << _field
-    # try:
-    #     _qa = _ds.sel(band="qa_pixel").astype("uint")
-    #     _bad = _qa & _bitmask  # just look at those 4 bits
-    #     _ds = _ds.where(_bad == 0)
-    # except KeyError:
-    #     # ds_landsat.band.values)
-    #     print('failed at line 74')
-    #     return None
 
     # # construct annual median composites
     median_composite = (_ds
                         # .sel(band=['red', 'green', 'blue'])
                         .sel(band=['B04', 'B03', 'B02'])
                         .groupby(_ds.time.dt.year)
-                        .median(skipna=True))
+                        .median(skipna=True)
+                        .transpose('year', 'y', 'x', 'band')
+                        .rio.write_transform(grid_mapping_name='spatial_ref')
+                        .rio.write_crs(target_epsg.to_epsg(),
+                                       grid_mapping_name='spatial_ref')
+                        )    
 
-    return median_composite.transpose('year', 'y', 'x', 'band').compute()
+    return median_composite.compute()
 
 
 def animate_rgb(ds):

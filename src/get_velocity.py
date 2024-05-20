@@ -74,14 +74,14 @@ class Tools():
                                              axis=axis,
                                              nan_policy='omit')
             modified_z = (ds_df[var] - ds_df[var].median(dim=dim)) / mad
-            print(f'MAD: {mad}')
+            # print(f'MAD: {mad}')
             return xr.where(modified_z < n, ds_df[var], np.nan)
 
         elif isinstance(ds_df, pd.core.frame.DataFrame):
             mad = stats.median_abs_deviation(ds_df[var],
                                              nan_policy='omit')
             modified_z = (ds_df[var] - ds_df[var].median()) / mad
-            print(f'MAD: {mad}')
+            # print(f'MAD: {mad}')
             return ds_df.where(modified_z < n)
 
     @staticmethod

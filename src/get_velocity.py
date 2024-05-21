@@ -85,7 +85,7 @@ class Tools():
             return ds_df.where(modified_z < n)
 
     @staticmethod
-    def filter_df(self, ddt_range, **kwargs):
+    def filter_line_df(self, ddt_range, **kwargs):
         '''
         bundles both filter_ddt with filter_mad
         for a given distance along centreline
@@ -100,11 +100,11 @@ class Tools():
                                   ddt_range)
 
         _var = kwargs.get('var', 'v')
-        _val = kwargs.get('val', None)
+        _vals = kwargs.get('vals', None)
         _col = kwargs.get('col', 'cumul_dist')
         _mad = kwargs.get('mad', 5)
 
-        if _val is None:
+        if _vals is None:
             print('no val supplied - finding distance where v is peak')
             _df = _df.loc[_df[_col] == (_df
                                         .set_index(_col)
@@ -113,15 +113,36 @@ class Tools():
                                         .value_counts()
                                         .idxmax())
                           ].sort_values(by='mid_date')
+
+            if _mad:
+                _df = Tools.filter_mad(_df,
+                                       _var,
+                                       n=_mad).dropna()
+                _df = _df.sort_values(by='mid_date')
+
+            return _df
+
         else:
-            _df = utils.nearest(_df, _col, _val).sort_values(by='mid_date')
+            if isinstance(_vals, int): _vals = [_vals]
+            _dfs = []
+            for _val in _vals:
+                # print(f'now gather {_val}')
+                _df_sub = (utils.nearest(_df,
+                                         _col,
+                                         _val)
+                           .sort_values(by='mid_date')
+                )
+                if _mad:
+                    _df_sub = (Tools.filter_mad(_df_sub,
+                                                _var,
+                                                n=_mad)
+                               .dropna()
+                               .sort_values(by='mid_date'))
+                _dfs.append(_df_sub)
 
-        if _mad:
-            _df = Tools.filter_mad(_df, _var, n=_mad)
-            _df = _df.sort_values(by='mid_date')
-
-        return _df
-
+            return (pd.concat(_dfs)
+                    .sort_values(by=['cumul_dist', 'mid_date'])
+                    )
 
 class CentreLiner():
     '''
@@ -576,7 +597,7 @@ class Plotters():
 
         this function has ability to first filter the cube using date_dt
         and then basic outlier detection with MAD - does this by making
-        a call to `Tools.filter_df()`
+        a call to `get_velocity..filter_df()`
 
         can specify:
             variable to plot (defaults to `var='v'`)
@@ -589,28 +610,50 @@ class Plotters():
         '''
         _c = kwargs.get('c', 'tab:blue')
         _lw = kwargs.get('lw', 1)
-        _val = kwargs.get('val', None)
+        _vals = kwargs.get('vals', None)
         _col = kwargs.get('col', None)
         _var = kwargs.get('var', 'v')
         _mad = kwargs.get('mad', 5)
         _window = kwargs.get('window', '21d')
         _min_periods = kwargs.get('min_periods', 5)
-
-        _df = Tools.filter_df(self,
-                              ddt_range,
-                              var=_var,
-                              col=_col,
-                              val=_val,
-                              mad=_mad)
+        print(f'inupt vals: {_vals}')
+        _df = Tools.filter_line_df(self,
+                                   ddt_range,
+                                   var=_var,
+                                   **{'col':_col,
+                                      'vals':_vals,
+                                      'mad':_mad})
 
         _df = _df.loc[~_df[_var].isna()]
-        (_df.rolling(_window,
-                     on='mid_date',
-                     min_periods=_min_periods)[_var, 'mid_date']
-         .median()
-         .plot(x='mid_date',
-               y=_var,
-               c=_c,
-               lw=_lw,
-               ax=ax)
-         )
+
+        if isinstance(_vals, list):
+            _for_plotting = (
+                _df
+                .groupby(_col)
+                .rolling(_window,
+                            on='mid_date',
+                            min_periods=_min_periods)[_var]
+                .median()
+                .reset_index()
+                .groupby(_col)
+                )
+
+            for _grp in _for_plotting:
+                _grp[1].plot(x='mid_date',
+                                y=_var,
+                                lw=_lw,
+                                ax=ax,
+                                label=f'{_var}: {int(_grp[0])} m')
+        else:
+            _val = _df[_col].unique()[0]
+            (_df.rolling(_window,
+                            on='mid_date',
+                            min_periods=_min_periods)[_var, 'mid_date']
+                .median()
+                .plot(x='mid_date',
+                    y=_var,
+                    c=_c,
+                    lw=_lw,
+                    ax=ax,
+                    label=f'{_var}: {int(_val)} m')
+                )

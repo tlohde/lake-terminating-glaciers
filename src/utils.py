@@ -126,25 +126,25 @@ def nearest(df, col, val):
     '''
     return df.loc[df[col] == min(df[col], key=lambda x: abs(x - val))]
 
-# for robust trends using theilslopes
-
 
 def robust_slope(y, t):
     '''
+    for robust trends using theilslopes
     y - input array of variable of concern
     t - array of corresponding timestamps
         converts timestamps to years since first observation
         identify nan values in `y`, return theilslopes for non-nan values
     '''
     x = (t-t.min()) / pd.Timedelta('365.25D')
-    idx = np.isnan(y) #.compute()
+    idx = np.isnan(y)  # .compute()
     # print(idx.shape)
     if len(idx) == idx.sum():
         return np.nan
     else:
         return theilslopes(y[~idx], x[~idx]).slope
 
-def make_robust_trend(ds, i_c_d = 'mid_date'):
+
+def make_robust_trend(ds, i_c_d='mid_date'):
     '''
     robust_slope as ufunc to dask array, dss
     this is a lazy operation
@@ -152,10 +152,10 @@ def make_robust_trend(ds, i_c_d = 'mid_date'):
     return xr.apply_ufunc(robust_slope,
                           ds,
                           ds[i_c_d],
-                          input_core_dims=[[i_c_d],[i_c_d]],
+                          input_core_dims=[[i_c_d], [i_c_d]],
                           exclude_dims=set([i_c_d]),
                           vectorize=True,
                           dask='parallelized',
                           output_dtypes=[ds.dtype],
-                          dask_gufunc_kwargs={'allow_rechunk':True},
+                          dask_gufunc_kwargs={'allow_rechunk': True},
                           )

@@ -89,7 +89,7 @@ def get_annual_median_mosaic(geo,
                         .rio.write_transform(grid_mapping_name='spatial_ref')
                         .rio.write_crs(target_epsg.to_epsg(),
                                        grid_mapping_name='spatial_ref')
-                        )    
+                        )
 
     return median_composite.compute()
 

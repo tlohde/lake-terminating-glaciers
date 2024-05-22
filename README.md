@@ -13,6 +13,12 @@ contains following functions
 - `animate_rgb()`
     - animate annual medians and save .gif [here](results/intermediate/study_site_animations/)
 
+#### get_velocity.py
+contains classes for handling and processing its_live velocity data
+##### `CentreLiner()`
+- takes either point, or linestring input
+- gets ppropriate itslive veloicty cube 
+
 ### data
 see [data/README.md](data/data_README.md) for details on individual data files used/created
 mosaic, and surface/bed topography.
@@ -36,4 +42,6 @@ wiesmann, a., et al., (2021) esa glaciers climate change initiative (glaciers_cc
 
 #### data sources
 see [here](https://its-live.jpl.nasa.gov/#how-to-cite) for list of appropriate references
+
+## analyses
 

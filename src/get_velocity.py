@@ -123,7 +123,8 @@ class Tools():
             return _df
 
         else:
-            if isinstance(_vals, int): _vals = [_vals]
+            if isinstance(_vals, int):
+                _vals = [_vals]
             _dfs = []
             for _val in _vals:
                 # print(f'now gather {_val}')
@@ -131,7 +132,7 @@ class Tools():
                                          _col,
                                          _val)
                            .sort_values(by='mid_date')
-                )
+                           )
                 if _mad:
                     _df_sub = (Tools.filter_mad(_df_sub,
                                                 _var,
@@ -143,6 +144,7 @@ class Tools():
             return (pd.concat(_dfs)
                     .sort_values(by=['cumul_dist', 'mid_date'])
                     )
+
 
 class CentreLiner():
     '''
@@ -557,47 +559,13 @@ class Plotters():
         Plotters.annual_v_profile(self, ax=axs['profile'])
 
     @staticmethod
-    def date_dt_bars(self, ddt_range, ax, **kwargs):
-        '''
-        adds line collection to axes
-        x-limits of each line are the dates of the two images used
-        to generate the velocity field
-        y-value of each line is the velocity estimate
-
-        this function has ability to first filter the cube using date_dt
-        and then basic outlier detection with MAD - does this by making
-        a call to `Tools.filter_df()`
-
-        linecollection then constructed and added straight to axes
-        '''
-        _c = kwargs.get('c', None)
-        _lw = kwargs.get('lw', 1)
-        _var = kwargs.get('var', 'v')
-        _df = Tools.filter_df(self, ddt_range, **kwargs)
-
-        _v_collection = LineCollection(list(zip(
-            list(zip(date2num(_df['acquisition_date_img1']), _df[_var])),
-            list(zip(date2num(_df['acquisition_date_img2']), _df[_var]))
-            )),
-                                       linewidth=_lw, color=_c)
-
-        ax.add_collection(_v_collection, autolim=False)
-
-        ax.set(
-            ylim=_df[_var].agg([np.nanmin, np.nanmax]),
-            xlim=(
-                date2num(_df['acquisition_date_img1'].min()),
-                date2num(_df['acquisition_date_img2'].max())
-                )
-            )
-
-    def rolling_median(self, ddt_range, ax, **kwargs):
+    def rolling_median(self, ax, **kwargs):
         '''
         adds rolling median to axes
 
         this function has ability to first filter the cube using date_dt
         and then basic outlier detection with MAD - does this by making
-        a call to `get_velocity..filter_df()`
+        a call to `get_velocity.filter_line_df()`
 
         can specify:
             variable to plot (defaults to `var='v'`)
@@ -608,21 +576,23 @@ class Plotters():
             line color `c='r'`
             line width `lw=2`
         '''
+        _ddt_range = kwargs.get('ddt_range': ('335d', '395d'))
+        _ddt_bars = kwargs.get('ddt_bars': False)
         _c = kwargs.get('c', 'tab:blue')
         _lw = kwargs.get('lw', 1)
         _vals = kwargs.get('vals', None)
-        _col = kwargs.get('col', None)
+        _col = kwargs.get('col', 'cumul_dist')
         _var = kwargs.get('var', 'v')
         _mad = kwargs.get('mad', 5)
         _window = kwargs.get('window', '21d')
         _min_periods = kwargs.get('min_periods', 5)
-        print(f'inupt vals: {_vals}')
+        # print(f'inupt vals: {_vals}')
         _df = Tools.filter_line_df(self,
-                                   ddt_range,
+                                   _ddt_range,
                                    var=_var,
-                                   **{'col':_col,
-                                      'vals':_vals,
-                                      'mad':_mad})
+                                   **{'col': _col,
+                                      'vals': _vals,
+                                      'mad': _mad})
 
         _df = _df.loc[~_df[_var].isna()]
 
@@ -631,8 +601,9 @@ class Plotters():
                 _df
                 .groupby(_col)
                 .rolling(_window,
-                            on='mid_date',
-                            min_periods=_min_periods)[_var]
+                         on='mid_date',
+                         center=True,
+                         min_periods=_min_periods)[_var]
                 .median()
                 .reset_index()
                 .groupby(_col)
@@ -640,20 +611,42 @@ class Plotters():
 
             for _grp in _for_plotting:
                 _grp[1].plot(x='mid_date',
-                                y=_var,
-                                lw=_lw,
-                                ax=ax,
-                                label=f'{_var}: {int(_grp[0])} m')
+                             y=_var,
+                             lw=_lw,
+                             ax=ax,
+                             label=f'{_var}: {int(_grp[0])} m')
+
+            if ddt_bars:
+                _for_plotting = _df.groupby(_col)
+                for _grp in _for_plotting:
+                    _v_collection = LineCollection(list(zip(
+                        list(zip(date2num(_grp[1]['acquisition_date_img1']),
+                                 _grp[1][_var])),
+                        list(zip(date2num(_grp[1]['acquisition_date_img2']),
+                                 _grp[1][_var]))
+                        )))
+
+                    ax.add_collection(_v_collection, autolim=False)
+
         else:
             _val = _df[_col].unique()[0]
             (_df.rolling(_window,
-                            on='mid_date',
-                            min_periods=_min_periods)[_var, 'mid_date']
+                         on='mid_date',
+                         min_periods=_min_periods)[_var, 'mid_date']
                 .median()
                 .plot(x='mid_date',
-                    y=_var,
-                    c=_c,
-                    lw=_lw,
-                    ax=ax,
-                    label=f'{_var}: {int(_val)} m')
-                )
+                      y=_var,
+                      c=_c,
+                      lw=_lw,
+                      ax=ax,
+                      label=f'{_var}: {int(_val)} m'))
+
+            if ddt_bars:
+                _v_collection = LineCollection(list(zip(
+                    list(zip(date2num(_df['acquisition_date_img1']),
+                             _df[_var])),
+                    list(zip(date2num(_df['acquisition_date_img2']),
+                             _df[_var]))
+                    )))
+
+                ax.add_collection(_v_collection, autolim=False)

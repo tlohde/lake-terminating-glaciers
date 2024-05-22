@@ -190,12 +190,15 @@ class CentreLiner():
         # resolution (in m) of velocity dataset
         self.res = np.mean(np.abs(self.dss[0].rio.resolution()))
 
+        # default kwargs for filtering cube
+        # only used if filter_cube=True
         self.ddt_range = kwargs.get('ddt_range', ('335d', '395d'))
         self.n = kwargs.get('n', 5)
 
         if filter_cube:
             print('filtering velocity cube')
-            self.filter_v_components(ddt_range=self.ddt_range, n=self.n)
+            self.filter_v_components(ddt_range=self.ddt_range,
+                                     n=self.n)
 
         if get_annual_median:
             print('generating annual median field')
@@ -489,6 +492,15 @@ class CentreLiner():
             b=self.composite.sel(band='B02')
             )
 
+    def robust_spatial_trends(self, _var='v'):
+        self.robust_trends = []
+        # assert self.filtered_v
+        for ds in self.filtered_v:
+            self.robust_trends.append(
+                utils.make_robust_trend(ds[_var]).rename(f'{_var}_trend')
+                )
+        self.robust_trend = xr.merge(self.robust_trends)
+
 
 class Plotters():
 
@@ -576,8 +588,8 @@ class Plotters():
             line color `c='r'`
             line width `lw=2`
         '''
-        _ddt_range = kwargs.get('ddt_range': ('335d', '395d'))
-        _ddt_bars = kwargs.get('ddt_bars': False)
+        _ddt_range = kwargs.get('ddt_range', ('335d', '395d'))
+        _ddt_bars = kwargs.get('ddt_bars', False)
         _c = kwargs.get('c', 'tab:blue')
         _lw = kwargs.get('lw', 1)
         _vals = kwargs.get('vals', None)
@@ -616,7 +628,7 @@ class Plotters():
                              ax=ax,
                              label=f'{_var}: {int(_grp[0])} m')
 
-            if ddt_bars:
+            if _ddt_bars:
                 _for_plotting = _df.groupby(_col)
                 for _grp in _for_plotting:
                     _v_collection = LineCollection(list(zip(
@@ -641,7 +653,7 @@ class Plotters():
                       ax=ax,
                       label=f'{_var}: {int(_val)} m'))
 
-            if ddt_bars:
+            if _ddt_bars:
                 _v_collection = LineCollection(list(zip(
                     list(zip(date2num(_df['acquisition_date_img1']),
                              _df[_var])),

@@ -155,6 +155,7 @@ class CentreLiner():
                  buff_dist,
                  index,
                  filter_cube=False,
+                 get_annual_trends=False,
                  get_annual_median=False,
                  get_rgb=False,
                  **kwargs):
@@ -185,7 +186,7 @@ class CentreLiner():
         # use itslive api to get list of dictionaries of zarr velocity cubes
         self.cubes = itslive.velocity_cubes.find_by_polygon(self.coords)
 
-        print('getting cubes')
+        print('getting cubes from itslive')
         self.get_cubes()
         # resolution (in m) of velocity dataset
         self.res = np.mean(np.abs(self.dss[0].rio.resolution()))
@@ -196,9 +197,19 @@ class CentreLiner():
         self.n = kwargs.get('n', 5)
 
         if filter_cube:
-            print('filtering velocity cube')
+            print(f'filtering velocity cube:\
+                ddt:{self.ddt_range}\
+                    mad: {self.n}')
             self.filter_v_components(ddt_range=self.ddt_range,
                                      n=self.n)
+            
+        if get_annual_trends:
+            if not filter_cube:
+                print('filtering cube before computing trends')
+                self.filter_v_components(ddt_range=self.ddt_range,
+                                         n=self.n)                
+            print('computing spatial trends')
+            self.robust_spatial_trends()
 
         if get_annual_median:
             print('generating annual median field')
@@ -267,6 +278,15 @@ class CentreLiner():
                                               [_vx, _vy, _v])))
                 )
             self.filtered_v_idx.append(_f_ddt_idx)
+
+    def robust_spatial_trends(self, _var='v'):
+        self.robust_trends = []
+        # assert self.filtered_v
+        for ds in self.filtered_v:
+            self.robust_trends.append(
+                utils.make_robust_trend(ds[_var]).rename(f'{_var}_trend')
+                )
+        self.robust_trend = xr.merge(self.robust_trends)
 
     def get_annual_median(self, vars=['v', 'vx', 'vy']):
         '''
@@ -491,15 +511,6 @@ class CentreLiner():
             g=self.composite.sel(band='B03'),
             b=self.composite.sel(band='B02')
             )
-
-    def robust_spatial_trends(self, _var='v'):
-        self.robust_trends = []
-        # assert self.filtered_v
-        for ds in self.filtered_v:
-            self.robust_trends.append(
-                utils.make_robust_trend(ds[_var]).rename(f'{_var}_trend')
-                )
-        self.robust_trend = xr.merge(self.robust_trends)
 
 
 class Plotters():

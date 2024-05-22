@@ -33,8 +33,9 @@ ddt_range = (args.ddt1, args.ddt2)
 mad = args.mad
 
 # set dask cluster running
-client = Client()
-print(f'dask dashboard link: {client.dashboard_link}')
+# if __name__ == "__main__":
+#     client = Client()
+#     print(f'dask dashboard link: {client.dashboard_link}')
 
 # read in centrelines
 lines = gpd.read_file(f)
@@ -50,7 +51,7 @@ for row in tqdm(lines.sample(2).itertuples()):
             buff_dist=buff,
             index=row.Index,
             filter_cube=filter_cube,
-            get_annual_median=False,
+            get_annual_trends=True,
             get_rgb=False,
             **{'ddt_range': ddt_range,
                'n': mad}
@@ -60,3 +61,5 @@ for row in tqdm(lines.sample(2).itertuples()):
         failed.append((row.Index, e))
         print(f'#{row.Index} did not work because\n{e}')
         continue
+
+print('finished')

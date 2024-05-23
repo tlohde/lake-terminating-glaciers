@@ -202,12 +202,12 @@ class CentreLiner():
                     mad: {self.n}')
             self.filter_v_components(ddt_range=self.ddt_range,
                                      n=self.n)
-            
+
         if get_annual_trends:
             if not filter_cube:
                 print('filtering cube before computing trends')
                 self.filter_v_components(ddt_range=self.ddt_range,
-                                         n=self.n)                
+                                         n=self.n)
             print('computing spatial trends')
             self.robust_spatial_trends()
 

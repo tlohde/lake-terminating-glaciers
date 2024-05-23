@@ -139,23 +139,50 @@ def robust_slope(y, t):
     idx = np.isnan(y)  # .compute()
     # print(idx.shape)
     if len(idx) == idx.sum():
-        return np.nan
+        return np.stack((np.nan, np.nan, np.nan, np.nan),
+                        axis=-1)
     else:
-        return theilslopes(y[~idx], x[~idx]).slope
+        slope, intercept, low, high = theilslopes(y[~idx], x[~idx])
+        return np.stack((slope, intercept, low, high),
+                        axis=-1)
 
 
-def make_robust_trend(ds, i_c_d='mid_date'):
+def make_robust_trend(ds, inp_core_dim='mid_date'):
     '''
     robust_slope as ufunc to dask array, dss
     this is a lazy operation
+    --> very helpful SO
+    https://stackoverflow.com/questions/58719696/
+    how-to-apply-a-xarray-u-function-over-netcdf-and-return-a-2d-array-multiple-new
+    /62012973#62012973
+    --> also helpful:https://stackoverflow.com/questions/71413808/
+    understanding-xarray-apply-ufunc
+    --> and this:
+    https://docs.xarray.dev/en/stable/examples/
+    apply_ufunc_vectorize_1d.html#apply_ufunc
     '''
-    return xr.apply_ufunc(robust_slope,
-                          ds,
-                          ds[i_c_d],
-                          input_core_dims=[[i_c_d], [i_c_d]],
-                          exclude_dims=set([i_c_d]),
-                          vectorize=True,
-                          dask='parallelized',
-                          output_dtypes=[ds.dtype],
-                          dask_gufunc_kwargs={'allow_rechunk': True},
-                          )
+    output = xr.apply_ufunc(robust_slope,
+                            ds,
+                            ds[inp_core_dim],
+                            input_core_dims=[[inp_core_dim],
+                                             [inp_core_dim]],
+                            output_core_dims=[['result']],
+                            exclude_dims=set([inp_core_dim]),
+                            vectorize=True,
+                            dask='parallelized',
+                            output_dtypes=[float],
+                            dask_gufunc_kwargs={
+                                'allow_rechunk': True,
+                                'output_sizes': {'result': 4}
+                                }
+                            )
+    
+    output['result'] = xr.DataArray(['slope',
+                                     'intercept',
+                                     'low_slope',
+                                     'high_slope'],
+                                    dims=['result'])
+    
+    return output
+    
+    

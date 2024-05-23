@@ -8,3 +8,4 @@ results/intermediate/velocity/*.tif*
 *.html
 *.tif.aux.xml
 *.tif
+results/intermediate/velocity/*

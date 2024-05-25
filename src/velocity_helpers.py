@@ -291,8 +291,9 @@ class CentreLiner():
                  .rename(f'{_var}_trend'))
                 )
         self.robust_trend = xr.merge(_trends)
-
+        
         _now = pd.Timestamp.now().strftime('%y%m%d_%H%M')
+        print(f'trends lazily computed, adding metadata: {_now}')
 
         self.robust_trend['v_trend'].attrs = {
             'crs': 3413,
@@ -305,6 +306,7 @@ class CentreLiner():
         if export:
             _path = '../results/intermediate/velocity/robust_annual_trends/'
             _file = f'{_now}_id{self.index}.zarr'
+            print(f'now exporting and computing trend output\n{_path}/{_file}')
             (self.robust_trend['v_trend']
              .chunk(dict(zip(self.robust_trend['v_trend'].dims,
                              self.robust_trend['v_trend'].shape)))

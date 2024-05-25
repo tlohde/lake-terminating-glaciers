@@ -155,8 +155,9 @@ class CentreLiner():
                  buff_dist,
                  index,
                  filter_cube=False,
-                 get_annual_trends=False,
+                 get_robust_trend=False,
                  get_annual_median=False,
+                 sample_centreline=False,
                  get_rgb=False,
                  **kwargs):
         '''
@@ -166,6 +167,7 @@ class CentreLiner():
         buff_dist: area around point/linestring to get velocity and imagery
         '''
         self.index = index
+        self.buff_dist = buff_dist
         if isinstance(geo, shapely.geometry.point.Point):
             self.point = geo
             self.geo = geo.buffer(buff_dist,
@@ -203,13 +205,11 @@ class CentreLiner():
             self.filter_v_components(ddt_range=self.ddt_range,
                                      n=self.n)
 
-        if get_annual_trends:
-            if not filter_cube:
-                print('filtering cube before computing trends')
-                self.filter_v_components(ddt_range=self.ddt_range,
-                                         n=self.n)
+        if get_robust_trend:
+            robust_trend_export = kwargs.get('robust_trend_export', False)
             print('computing spatial trends')
-            self.robust_spatial_trends()
+            self.robust_spatial_trends(ddt_range=self.ddt_range,
+                                       export=robust_trend_export)
 
         if get_annual_median:
             print('generating annual median field')
@@ -225,9 +225,11 @@ class CentreLiner():
             self.clean_median()
             self.get_stream()
 
-        print('sampling along centreline')
-        self.pair_points_with_box()
-        self.sample_along_line()
+        # sample along centrelines
+        if sample_centreline:
+            print('sampling along centreline')
+            self.pair_points_with_box()
+            self.sample_along_line()
 
     def get_cubes(self):
         '''
@@ -279,14 +281,34 @@ class CentreLiner():
                 )
             self.filtered_v_idx.append(_f_ddt_idx)
 
-    def robust_spatial_trends(self, _var='v'):
-        self.robust_trends = []
+    def robust_spatial_trends(self, ddt_range, _var='v', export=False):
+        _trends = []
         # assert self.filtered_v
-        for ds in self.filtered_v:
-            self.robust_trends.append(
-                utils.make_robust_trend(ds[_var]).rename(f'{_var}_trend')
+        for ds in self.dss:
+            _ddt_filtered, _ = Tools.filter_ddt(ds, ddt_range)
+            _trends.append(
+                (utils.make_robust_trend(_ddt_filtered[_var])
+                 .rename(f'{_var}_trend'))
                 )
-        self.robust_trend = xr.merge(self.robust_trends)
+        self.robust_trend = xr.merge(_trends)
+
+        _now = pd.Timestamp.now().strftime('%y%m%d_%H%M')
+
+        self.robust_trend['v_trend'].attrs = {
+            'crs': 3413,
+            'buffer': self.buff_dist,
+            'ddt_range': ddt_range,
+            'date_ran': _now,
+            'centreline': self.tidy_stream.wkt,
+            'centreline_id': self.index
+        }
+        if export:
+            _path = '../results/intermediate/velocity/robust_annual_trends/'
+            _file = f'{_now}_id{self.index}.zarr'
+            (self.robust_trend['v_trend']
+             .chunk(dict(zip(self.robust_trend['v_trend'].dims,
+                             self.robust_trend['v_trend'].shape)))
+             .to_zarr(_path+_file))
 
     def get_annual_median(self, vars=['v', 'vx', 'vy']):
         '''

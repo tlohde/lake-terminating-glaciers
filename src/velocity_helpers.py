@@ -283,7 +283,6 @@ class CentreLiner():
 
     def robust_spatial_trends(self, ddt_range, _var='v', export=False):
         _trends = []
-        # assert self.filtered_v
         for ds in self.dss:
             _ddt_filtered, _ = Tools.filter_ddt(ds, ddt_range)
             _trends.append(

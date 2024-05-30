@@ -1,3 +1,0 @@
-#!/usr/bin/env bash
-
-python src/annual_v_trends_tseries.py --centrelines "data/streams_v2.geojson"

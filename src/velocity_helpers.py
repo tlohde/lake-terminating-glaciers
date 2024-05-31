@@ -1,4 +1,6 @@
 import cmcrameri.cm as cmc
+import dask
+import dask.delayed
 import pandas as pd
 import imagery
 from functools import partial
@@ -298,7 +300,7 @@ class CentreLiner():
             'crs': 3413,
             'buffer': self.buff_dist,
             'ddt_range': ddt_range,
-            'date_ran': _now,
+            'date_processed': _now,
             'centreline': self.tidy_stream.wkt,
             'centreline_id': self.index
         }
@@ -311,6 +313,17 @@ class CentreLiner():
                              self.robust_trend['v_trend'].shape)))
              .to_zarr(_path+_file))
 
+    @dask.delayed
+    def export_trend(self):
+        _now = self.robust_trend['v_trend'].attrs['date_processed']
+        _path = '../results/intermediate/velocity/robust_annual_trends/'
+        _file = f'{_now}_id{self.index}.zarr'
+        print(f'now exporting and computing trend output\n{_path}/{_file}')
+        (self.robust_trend['v_trend']
+         .chunk(dict(zip(self.robust_trend['v_trend'].dims,
+                         self.robust_trend['v_trend'].shape)))
+         .to_zarr(_path+_file))
+    
     def get_annual_median(self, vars=['v', 'vx', 'vy']):
         '''
         groups by year of mid_date and computes median

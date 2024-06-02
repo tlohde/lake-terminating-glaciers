@@ -33,9 +33,7 @@ parser.add_argument('--mad',
                     type=int)
 parser.add_argument('--filter_cube',
                     action=argparse.BooleanOptionalAction)
-# choices=["True", "False"],
-# default="False",
-# type=bool)
+
 parser.add_argument('--sample_centreline',
                     action=argparse.BooleanOptionalAction)
 parser.add_argument('--get_robust_trend',
@@ -59,37 +57,37 @@ export_trend = args.export_trend
 get_annual_median = args.get_annual_median
 get_rgb = args.get_rgb
 
-# set dask cluster running
-# if __name__ == "__main__":
-#     client = Client()
-#     print(f'dask dashboard link: {client.dashboard_link}')
-
 # read in centrelines
 lines = gpd.read_file(f)
 
-# iterate through centrelines, and get velocity cube
-V = {}
-failed = []
-for row in tqdm(lines.sample(1).itertuples()):
-    print(f'working on #{row.Index}')
-    try:
-        V[row.Index] = velocity_helpers.CentreLiner(
-            geo=row.geometry,
-            buff_dist=buff,
-            index=row.Index,
-            filter_cube=filter_cube,
-            get_robust_trend=get_robust_trend,
-            get_annual_median=get_annual_median,
-            sample_centreline=sample_centreline,
-            get_rgb=get_rgb,
-            **{'ddt_range': ddt_range,
-               'n': mad,
-               'robust_trend_export': export_trend}
-            )
+# set dask cluster running
+if __name__ == "__main__":
+    client = Client()
+    print(f'dask dashboard link: {client.dashboard_link}')
 
-    except Exception as e:
-        failed.append((row.Index, e))
-        print(f'#{row.Index} did not work because\n{e}')
-        continue
+    # iterate through centrelines, and get velocity cube
+    V = {}
+    failed = []
+    for row in tqdm(lines.sample(1).itertuples()):
+        print(f'working on #{row.Index}')
+        try:
+            V[row.Index] = velocity_helpers.CentreLiner(
+                geo=row.geometry,
+                buff_dist=buff,
+                index=row.Index,
+                filter_cube=filter_cube,
+                get_robust_trend=get_robust_trend,
+                get_annual_median=get_annual_median,
+                sample_centreline=sample_centreline,
+                get_rgb=get_rgb,
+                **{'ddt_range': ddt_range,
+                'n': mad,
+                'robust_trend_export': export_trend}
+                )
 
-print('finished')
+        except Exception as e:
+            failed.append((row.Index, e))
+            print(f'#{row.Index} did not work because\n{e}')
+            continue
+
+    print('finished')

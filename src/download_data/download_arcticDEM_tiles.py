@@ -1,3 +1,4 @@
+import argparse
 import geopandas as gpd
 from glob import glob
 import json
@@ -7,6 +8,13 @@ import pandas as pd
 import rioxarray as rio
 from tqdm import tqdm
 import xarray as xr
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--index", type=int)
+args = parser.parse_args()
+index = args.index
+
+print(os.getcwd())
 
 # downloader function
 def get_dem(row, bnds, outdir, apply_bm='y', download_bm='y'):
@@ -63,10 +71,11 @@ def get_dem(row, bnds, outdir, apply_bm='y', download_bm='y'):
          )
 
 # read in centrelines
-lines = gpd.read_file('streams_v2.geojson')
+lines = gpd.read_file('../../data/streams_v2.geojson')
+lines = lines.loc[[index]]
 
 # read in arcticDEM catalog
-catalog = gpd.read_parquet(glob('arcticDEM/**/*.parquet', recursive=True)[0])
+catalog = gpd.read_parquet(glob('../../data/arcticDEM/**/*.parquet', recursive=True)[0])
 
 # make timestamps, datetimes, and sort (so downloads in date order)
 catalog['acqdate1'] = catalog['acqdate1'].astype('datetime64[ns]')
@@ -100,7 +109,7 @@ for line in lines.itertuples():
     print(f'working on {line.Index}/{len(lines)}')
     # derive params from line geometry to use for file naming
     cntr = line.geometry.centroid
-    outdir = f'arcticDEM/id{line.Index}_{cntr.x:.0f}x_{cntr.y:.0f}y'
+    outdir = f'../../data/arcticDEM/id{line.Index}_{cntr.x:.0f}x_{cntr.y:.0f}y'
     bounds = line.geometry.buffer(5000).envelope.bounds
     
     # make directory, and store some meta data

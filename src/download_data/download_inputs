@@ -17,4 +17,4 @@ find . -name '*.zip' -type f -execdir unzip -n '{}' ';'
 
 
 # run download script for getting arctic DEM tiles
-python ../src/download_data/download_arcticDEM_tiles.py
+# python ../src/download_data/download_arcticDEM_tiles.py

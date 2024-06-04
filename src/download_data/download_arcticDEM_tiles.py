@@ -71,10 +71,12 @@ def get_dem(row, bnds, outdir, apply_bm='y', download_bm='y'):
          )
 
 # read in centrelines
+print(f'read in centrelines, and select index: {index}')
 lines = gpd.read_file('../../data/streams_v2.geojson')
 lines = lines.loc[[index]]
 
 # read in arcticDEM catalog
+print('reading in arctic DEM catalog')
 catalog = gpd.read_parquet(glob('../../data/arcticDEM/**/*.parquet', recursive=True)[0])
 
 # make timestamps, datetimes, and sort (so downloads in date order)
@@ -84,7 +86,7 @@ catalog.sort_values(by='acqdate1', inplace=True)
 
 # only select dems from 'summer (-ish)' months
 # (june, july, aug, sept)
-catalog = catalog['acqdate1'].dt.month.isin([6,7,8,9])
+catalog = catalog.loc[catalog['acqdate1'].dt.month.isin([6,7,8,9])]
 
 # fix download urls
 text_to_replace = 'polargeospatialcenter.github.io/stac-browser/#/external/'
@@ -113,6 +115,7 @@ for line in lines.itertuples():
     bounds = line.geometry.buffer(5000).envelope.bounds
     
     # make directory, and store some meta data
+    print('making / finding directory and exporting process meta-data')
     if not os.path.exists(outdir):
         os.mkdir(outdir)
 
@@ -134,4 +137,12 @@ for line in lines.itertuples():
     print(f'getting, clipping, masking, downloading {len(selection)} DEMs')
     print(f'starting at: {pd.Timestamp.now().strftime("%Y/%m/%d_%H:%M")}')
     for dem in tqdm(selection.itertuples()):
+        print('downloading...')
         get_dem(dem, bounds, outdir)
+        print('done, next...')
+
+    print('all done')
+print('finished')
+
+
+

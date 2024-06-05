@@ -1,3 +1,15 @@
+"""
+for downloading arctic DEM strip tiles.
+
+takes index of centreline geodataframe as input
+(because that made running it with $parallel easier)
+
+uses the geoparquet arcticDEM catalog to identify tiles
+that intersect the centreline...lazily opens these COGs, 
+clips to an area 5000 m around the centreline, applies the
+bitmask, and exports to geotiff
+"""
+
 import argparse
 import geopandas as gpd
 from glob import glob

@@ -9,3 +9,6 @@ results/intermediate/velocity/*.tif*
 *.tif.aux.xml
 *.tif
 results/intermediate/velocity/*
+*checkpoints
+quick_plotting.ipynb
+

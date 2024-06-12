@@ -124,7 +124,8 @@ for line in lines.itertuples():
     # derive params from line geometry to use for file naming
     cntr = line.geometry.centroid
     outdir = f'../../data/arcticDEM/id{line.Index}_{cntr.x:.0f}x_{cntr.y:.0f}y'
-    bounds = line.geometry.buffer(5000).envelope.bounds
+    envelope = line.geometry.buffer(5000).envelope
+    bounds = envelope.bounds
     
     # make directory, and store some meta data
     print('making / finding directory and exporting process meta-data')
@@ -133,7 +134,7 @@ for line in lines.itertuples():
 
         params = {
             'centreline': line.geometry.wkt,
-            'predicate': 'dem footprint intersects line',
+            'predicate': 'dem footprint intersects envelope',
             'clipping buffer': 5000,
             'clipped bounds': bounds,
             'bitmask': 'applied',
@@ -144,11 +145,16 @@ for line in lines.itertuples():
             notes.write(json.dumps(params))
     
     # find arcticDEMs that intersect centreline:
-    selection = catalog.loc[catalog.intersects(line.geometry)]
+    # selection = catalog.loc[catalog.intersects(line.geometry)]
+    selection = catalog.loc[catalog.intersects(envelope)]
     
     print(f'getting, clipping, masking, downloading {len(selection)} DEMs')
     print(f'starting at: {pd.Timestamp.now().strftime("%Y/%m/%d_%H:%M")}')
     for dem in tqdm(selection.itertuples()):
+        already_downloaded = glob(f'{outdir}/*.tif')
+        if len([f for f in already_downloaded if dem.dem_id in f]) > 0:
+            print(f'already got {dem.dem_id}')
+            continue
         print('downloading...')
         get_dem(dem, bounds, outdir)
         print('done, next...')

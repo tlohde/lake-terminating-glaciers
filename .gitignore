@@ -10,5 +10,4 @@ results/intermediate/velocity/*.tif*
 *.tif
 results/intermediate/velocity/*
 *checkpoints
-quick_plotting.ipynb
 

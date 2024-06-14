@@ -1,20 +1,17 @@
+'''
+- general helper functions in misc()
+- functions for computing robust trends,
+and piecewise trends in Trends()
+'''
 import numpy as np
 import os
 import pandas as pd
-import planetary_computer as pc
-import pystac_client
-from pystac.extensions.eo import EOExtension as eo
 import pyproj
-import rioxarray as rio
 from scipy import interpolate, optimize
 from scipy.stats.mstats import theilslopes
 import shapely
-from shapely import wkt
-import stackstac
 import sys
-from typing import List
 import xarray as xr
-import xdem
 
 
 class misc():
@@ -205,5 +202,3 @@ class Trends():
                 break
 
         return func(r_.x)  # Return the last (n-1)
-
-

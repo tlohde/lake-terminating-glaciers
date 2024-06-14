@@ -1,4 +1,7 @@
-
+"""
+contains helper functions for the downloading 
+and co-registering of arctic dem strips.
+"""
 import geopandas as gpd
 import numpy as np
 import os

@@ -1,3 +1,8 @@
+"""
+functions for handling itslive velocity cube
+- getting flow centrelines
+- filtering (on date_dt or mid_date)
+"""
 import cmcrameri.cm as cmc
 import dask
 import dask.delayed

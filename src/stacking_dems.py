@@ -16,7 +16,7 @@ os.chdir(f'../data/arcticDEM/{directory}/coregistered')
 
 files = glob('*.tif')
 print(f'there are {len(files)} in {directory}')
-# print(files)
+
 
 dems = []
 attrs = []

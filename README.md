@@ -4,8 +4,17 @@
 
 ### workflow
 #### elevation
-`make_dirs.py`
-`dem_download_tiles.py`
+- `make_dirs.py`
+    - makes a directory for in `data/` for each centreline in `data/streams_v2.geojson`
+    - and puts copy of centreline (*singular*) in each directory
+- `dem_download_tiles.py`
+    - usage: `python dem_download_tiles.py --directory data/id9_Xx_Yy --months 6 7 8 9 --buffer 5000`
+    - inputs: `--directory`, `--months`, `--buffer`
+    - for given directory, downloads all arctic DEM strips that intersect with the the centreline in that directory
+    - clips and pads each DEM to the bounds of the centreline + buffer (default=5000 m)
+    - only includes DEMs captured during specified months
+- `dem_get_masks.py`
+    - for given directory
 
 ### code
 #### `imagery.py`

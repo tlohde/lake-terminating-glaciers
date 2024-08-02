@@ -2,6 +2,11 @@
 
 ## contents
 
+### workflow
+#### elevation
+`make_dirs.py`
+`dem_download_tiles.py`
+
 ### code
 #### `imagery.py`
 contains following functions

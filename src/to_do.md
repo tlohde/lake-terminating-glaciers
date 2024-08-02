@@ -13,7 +13,7 @@
 
 |script|inputs|what it does|what needs changing|
 |:-:|:-|:-|:-|
-|`dem_download_tiles.py`|index of `.geojson`|uses centreline to get arctic dem strip tiles|- [ ] change input from index to single centreline<br>- [ ] currently includes the creation of directories routine which needs moving outside/before this|
+|`dem_download_tiles.py`|index of `.geojson`|uses centreline to get arctic dem strip tiles|- [ ] change input from index to single centreline<br>- [x] currently includes the creation of directories routine which needs moving outside/before this|
 |`dem_padder.py`|`directory`|pads all DEMs in `directory` to same extent|- [ ] this can be removed, and this routine put inside `dem_download_tiles.py`<br>- see [this](https://github.com/tlohde/isortuarsuupSermia_2/blob/0dee85a72c1ade2b22d32d2d7888a4072e44aa09/src/utils.py#L268) for how|
 |`dem_coregister.py`|`directory`|- coregisters all DEMs in directory to reference<br> - NOTE: requires one DEM to be called 'reference|- [ ] auto-magically select reference (see [this](https://github.com/tlohde/isortuarsuupSermia_2/blob/0dee85a72c1ade2b22d32d2d7888a4072e44aa09/src/utils.py#L314) for how to do so lazily) and copy across<br>- [ ] tidy up/delete original DEMs (for space savings)|
 |`dem_copying_reference.py`|`directory`|copies reference DEM into /coregistered directory|- [ ] remove this and include within `dem_coregister.py`|

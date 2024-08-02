@@ -2,6 +2,8 @@
 contains helper functions for the downloading 
 and co-registering of arctic dem strips.
 """
+import dask
+import dask.distributed
 import geopandas as gpd
 import numpy as np
 import os
@@ -11,8 +13,8 @@ import pystac_client
 from pystac.extensions.eo import EOExtension as eo
 import rioxarray as rio
 import shapely
-from src.utils import misc, Trends
-# import utils
+from utils import misc, Trends
+import utils
 import stackstac
 import xarray as xr
 import xdem
@@ -41,13 +43,19 @@ class ArcticDEM():
         '''
         catalog = gpd.read_parquet(f)
         # make timestamps, datetimes, and sort (so downloads in date order)
-        catalog['acqdate1'] = catalog['acqdate1'].astype('datetime64[ns]')
-        catalog['acqdate2'] = catalog['acqdate2'].astype('datetime64[ns]')
+        catalog['acqdate1'] = (catalog['acqdate1']
+                               .dt.tz_localize(None)
+                               .astype('datetime64[ns]')
+                               )
+        catalog['acqdate2'] = (catalog['acqdate2']
+                               .dt.tz_localize(None)
+                               .astype('datetime64[ns]')
+                               )
         catalog.sort_values(by='acqdate1', inplace=True)
 
         # only select dems from 'summer (-ish)' months
         # (june, july, aug, sept)
-        catalog = catalog.loc[catalog['acqdate1'].dt.month.isin([6,7,8,9])]
+        catalog = catalog.loc[catalog['acqdate1'].dt.month.isin(months)]
 
         # fix download urls
         text_to_replace = 'polargeospatialcenter.github.io/stac-browser/#/external/'
@@ -64,124 +72,77 @@ class ArcticDEM():
         return catalog
     
     
-    @staticmethod
-    def get_dems(geom: shapely.geometry,
-                 outdir: str,
-                 catalog_dir: str,
-                 months: list=[6,7,8,9],
-                 crs: int=3413,
-                 apply_bm: bool=True,
-                 download_bm: bool=False,
-                 ):
+ 
+    
+    def export_dems(list_of_dems: list):
         '''
-        for iteratively getting all arcticDEM strips
-        that intersect with a given geometry.
-        geometry can be (multi)Point, (multi)LineString,
-        or (multi)Polygon
-        
-        calls `ArcticDEM.get_dem()` iteratively by using .itertuples()
-        on the geodataframe created by intersecting `geom` with `catalog`
-        
-        inputs:
-            - geom: shapely geometry. geometry in crs, crs
-            - outdir: str. directory to save outputs to (no '/' needed at end)
-            - catalog_dir: str. where is the arcticDEM strip catalog stored
-            - months: list of months. (1-->12). for filtering dem catalog
-        and only getting DEMs generated in those months
-            - crs: what projection is the `geom` in. catalog will be reprojected
-        to this prior to intersection
-            - apply_bm: boolean (default=True) whether to apply bitmask or not
-            - download_bm: boolean (default=True) whether to download_bm
+        download dems from list of lazy clipped/padded bitmasked dems
         '''
-        
-        catalog = ArcticDEM.get_catalog_gdf(catalog_dir,
-                                            months,
-                                            crs)
-        
-        dem_selection = catalog.loc[catalog.intersects(geom)]
-        print(f'found {len(dem_selection)} DEMs')
-        
-        for row in dem_selection.itertuples():
-            ArcticDEM.get_dem(row=row,
-                              bounds=geom.bounds,
-                              outdir=outdir,
-                              apply_bm=apply_bm,
-                              download_bm=download_bm)
-
-
+        dask.compute(*list_of_dems)
+    
     @staticmethod
+    @dask.delayed
     def get_dem(row: pd.core.frame,
                 bounds: tuple,
-                outdir: str,
-                apply_bm: bool=True,
-                download_bm: bool=False):
+                outdir: str):
         '''
-        downloads single arcticDEM strip
-        optionally applying bitmask; optionally download bitmask
+        lazy function for getting delayed object for
+        downloading single arcticDEM strip
+        bitmask is applied to DEM, and DEM is clipped and padded
+        to supplied bounds        
         
         inputs:
             - row: named tuples (from `df.itertuples()`, where `df` is
         a GeoDataFrame of the `ArcticDEM_Strip_Index_s2s041`
             - bounds: tuple (minx,miny,max,maxy) _MUST BE SAME CRS AS CATALOG_
-        the DEM's will be clipped to this
+        the DEM's will be clipped and padded to this
             - outdir: str - directory to output to. does not need '/'
         at the end
-            - apply_bm: boolean - whether or not to apply the bitmask.
-        default == True. if True, all pixels 'good' are set to np.nan.
-            - download_bm: boolean - whether or not to download the bitmask
-        default == False. if True, will be download with prefix 'bitmask_'
-
-        saves dem with file name given by the dem_id in the arcticDEM
-        catalog with a suffix of the bounds clipped to (_minx_miny_maxx_maxy)
-        additional meta data is added from the 
-        '''
-        # lazily open and clip DEM COG to bounds
-        _tmp = rio.open_rasterio(row.downloadurl, chunks='auto')
-        _tmp_clip = _tmp.rio.clip_box(*bounds)
-
-        # lazily open and clip bitmask to bounds
-        _tmp_bm = rio.open_rasterio(row.bitmaskurl, chunks='auto')
-        _tmp_bm_clip = _tmp_bm.rio.clip_box(*bounds)
-
-        # apply bitmask (fill everything that is either the DEM fill value,
-        # or where the bitmask > 0 with nan)
-        if apply_bm:
-            _for_export = (xr.where((_tmp_clip == _tmp.attrs['_FillValue'])
-                                    | (_tmp_bm_clip[:, :, :] > 0),
-                                    np.nan,
-                                    _tmp_clip)
-                        .rename('z')
-                        .squeeze()
-                        .rio.write_crs(_tmp.rio.crs.to_epsg()))
-        else:  # don't apply bitmask
-            _for_export = (_tmp_clip
-                        .rename('z')
-                        .squeeze()
-                        .rio.write_crs(_tmp.rio.crs.to_epsg()))
-
-        # appends the bounding box to the dem_id when saving
-        bounds_str = '_'.join([str(int(b)) for b in bounds])
-        fname = f'{row.dem_id}_{bounds_str}'
         
-        # add meta data from catalog df
-        _for_export.attrs['bounds'] = bounds
-        _for_export.attrs['downloaded_on'] = (pd.Timestamp.now()
-                                              .strftime('%Y-%m-%d_%H:%M'))
-        _for_export.attrs['acqdate1'] = row.acqdate1.strftime("%Y-%m-%d")
-        _for_export.attrs['acqdate2'] = row.acqdate2.strftime("%Y-%m-%d")
-        _for_export.attrs['rmse'] = row.rmse
-        _for_export.attrs['avg_expected_height_accuracy'] = row.avg_expected_height_accuracy
-        _for_export.attrs['full_dem_geom'] = shapely.wkt.dumps(row.geom)
-
-        _for_export.rio.to_raster(f'{outdir}/{fname}.tif')
-
-        # for optional downloading of bitmask
-        if download_bm:
-            (_tmp_bm_clip.rename('mask')
-            .squeeze()
-            .rio.write_crs(_tmp_bm.rio.crs.to_epsg())
-            .rio.to_raster(f'{outdir}/bitmask_{fname}.tif')
-            )
+        returns dask delayed object that can save the DEM with filename
+        given by the dem_id in the arcticDEM catalog; other metadata from
+        catalog is added as dictionary of attributes
+        
+        to download the lazy object call `dask.compute()`
+        '''
+        # lazily open and clip DEM and bitmask COGs to bounds
+        with rio.open_rasterio(row.downloadurl, chunks='auto') as _dem,\
+            rio.open_rasterio(row.bitmaskurl, chunks='auto') as _bitmask:
+                
+                _fill_value = _dem.attrs['_FillValue']
+                _dem_crs = _dem.rio.crs.to_epsg()
+                
+                _dem_clip = _dem.rio.clip_box(*bounds)
+                _bitmask_clip = _bitmask.rio.clip_box(*bounds)
+                
+                # apply bit mask
+                _masked = (xr.where(
+                    (_dem_clip == _fill_value)
+                    | (_bitmask_clip[:, :, :] > 0),
+                    _fill_value,
+                    _dem_clip)
+                           .rename('z')
+                           .squeeze()
+                           .rio.write_crs(_dem_crs)   
+                           )
+                
+                _padded = _masked.rio.pad_box(*bounds,
+                                              constant_values=_fill_value)
+                _padded.rio.write_nodata(_fill_value, inplace=True)
+                
+                attributes = row._asdict()
+                attributes['geom'] = attributes['geom'].wkt
+                _padded.attrs = attributes
+                
+                _output_fname = f'padded_{row.dem_id}.tiff'
+                _output_path = os.path.join(outdir, _output_fname)
+                
+                _delayed_write = _padded.rio.to_raster(_output_path,
+                                                       compute=True,
+                                                       lock=dask.distributed.Lock())
+                
+                return _delayed_write
+                
 
 
     @staticmethod

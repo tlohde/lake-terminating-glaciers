@@ -15,12 +15,13 @@ import dask
 from dem_utils import ArcticDEM
 import geopandas as gpd
 from glob import glob
+import logging
 import os
 
 
 if __name__ == '__main__':
     
-    cluster = dask.distributed.LocalCluster()
+    cluster = dask.distributed.LocalCluster(silence_logs=logging.ERROR)
     client = cluster.get_client()
 
     script_dir = os.path.dirname(os.path.realpath(__file__))

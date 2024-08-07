@@ -7,7 +7,6 @@ from glob import glob
 from dem_utils import ArcticDEM
 import os
 
-
 script_dir = os.path.dirname(os.path.realpath(__file__))
 
 parser = argparse.ArgumentParser(prog='stable terrain mask maker',

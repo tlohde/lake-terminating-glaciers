@@ -8,13 +8,30 @@
     - makes a directory for in `data/` for each centreline in `data/streams_v2.geojson`
     - and puts copy of centreline (*singular*) in each directory
 - `dem_download_tiles.py`
-    - usage: `python dem_download_tiles.py --directory data/id9_Xx_Yy --months 6 7 8 9 --buffer 5000`
+    - usage: `python dem_download_tiles.py --directory data/id#_Xx_Yy --months 6 7 8 9 --buffer 5000`
     - inputs: `--directory`, `--months`, `--buffer`
     - for given directory, downloads all arctic DEM strips that intersect with the the centreline in that directory
     - clips and pads each DEM to the bounds of the centreline + buffer (default=5000 m)
     - only includes DEMs captured during specified months
 - `dem_get_masks.py`
-    - for given directory
+    - usage: `python dem_get_masks.py --directory data/id#_Xx-Yy`
+    - inputs: `--directory`
+    - returns/outputs `.tif`
+    - for given directory (`--directory`) take all DEMs with file name `padded_*` and get binary stable terrain mask (where 1==stable terrain; 0==snow/ice/water/unstable terrain) from landsat/sentinel
+    - mask is re-projected to same extent & resolution as DEM
+- `dem_coregister.py`
+    - usage: `python dem_coregister.py --directory data/id#_Xx_Yy`
+    - inputs: `--directory`
+    - outputs: coregistered DEMs
+    - for given directory containing several DEMs (all padded to same extent, with filenames `padded_*`) and their stable terrain masks (`masks_*`) auto-magically decide which DEM to use as the *reference* on the basis of number of valid pixels
+    - coregister all DEMs to the reference, renaming to `coregd_*`
+    - stable terrain mask used for coregistration is the logical and of both `masks_*`, except when there are no overlapping valid pixels, in which case, revert to reference mask.
+    - all meta-data from reference, and to_register DEM are added to the output `coregd_`
+    - reference DEM is copied / renamed.
+
+
+
+
 
 ### code
 #### `imagery.py`

@@ -1,8 +1,9 @@
 """
-contains helper functions for the downloading 
+contains helper functions for the downloading
 and co-registering of arctic dem strips.
 """
 import dask
+import dask.delayed
 import dask.distributed
 import geopandas as gpd
 import numpy as np
@@ -21,7 +22,7 @@ import xdem
 
 
 class ArcticDEM():
-    
+
     @staticmethod
     def get_catalog_gdf(f: str,
                         months: list=[6,7,8,9],
@@ -29,16 +30,16 @@ class ArcticDEM():
         '''
         open arctic dem catalog parquet file and location 'f'
         filter by months and reproject to crs.
-        
+
         inputs:
             f: str. path to file
             months: list. list of month numbers to _include_
             crs: epsg code to project catalog to
-        
+
         additionally this function:
         - changes datetime to be of datetime type, and sorts by date
         - changes download links - so that they work
-        
+
         returns: geodataframe
         '''
         catalog = gpd.read_parquet(f)
@@ -71,7 +72,7 @@ class ArcticDEM():
         catalog = catalog.to_crs(crs)
         return catalog
 
-    
+
     @staticmethod
     @dask.delayed
     def get_dem(row: pd.core.frame,
@@ -81,8 +82,8 @@ class ArcticDEM():
         lazy function for getting delayed object for
         downloading single arcticDEM strip
         bitmask is applied to DEM, and DEM is clipped and padded
-        to supplied bounds        
-        
+        to supplied bounds
+
         inputs:
             - row: named tuples (from `df.itertuples()`, where `df` is
         a GeoDataFrame of the `ArcticDEM_Strip_Index_s2s041`
@@ -90,23 +91,23 @@ class ArcticDEM():
         the DEM's will be clipped and padded to this
             - outdir: str - directory to output to. does not need '/'
         at the end
-        
+
         returns dask delayed object that can save the DEM with filename
         given by the dem_id in the arcticDEM catalog; other metadata from
         catalog is added as dictionary of attributes
-        
+
         to download the lazy object call `dask.compute()`
         '''
         # lazily open and clip DEM and bitmask COGs to bounds
         with rio.open_rasterio(row.downloadurl, chunks='auto') as _dem,\
             rio.open_rasterio(row.bitmaskurl, chunks='auto') as _bitmask:
-                
+
                 _fill_value = _dem.attrs['_FillValue']
                 _dem_crs = _dem.rio.crs.to_epsg()
-                
+
                 _dem_clip = _dem.rio.clip_box(*bounds)
                 _bitmask_clip = _bitmask.rio.clip_box(*bounds)
-                
+
                 # apply bit mask
                 _masked = (xr.where(
                     (_dem_clip == _fill_value)
@@ -115,24 +116,24 @@ class ArcticDEM():
                     _dem_clip)
                            .rename('z')
                            .squeeze()
-                           .rio.write_crs(_dem_crs)   
+                           .rio.write_crs(_dem_crs)
                            )
-                
+
                 _padded = _masked.rio.pad_box(*bounds,
                                               constant_values=_fill_value)
                 _padded.rio.write_nodata(_fill_value, inplace=True)
-                
+
                 attributes = row._asdict()
                 attributes['geom'] = attributes['geom'].wkt
                 _padded.attrs = attributes
-                
+
                 _output_fname = f'padded_{row.dem_id}.tiff'
                 _output_path = os.path.join(outdir, _output_fname)
-                
+
                 _delayed_write = _padded.rio.to_raster(_output_path,
                                                        compute=True,
                                                        lock=dask.distributed.Lock(_output_path))
-                
+
                 return _delayed_write
 
     @staticmethod
@@ -141,7 +142,7 @@ class ArcticDEM():
         download dems from list of lazy clipped/padded bitmasked dems
         '''
         dask.compute(*list_of_dems)
-                
+
 ######### for coregistration
 
 ###### picking reference DEM
@@ -180,7 +181,7 @@ class ArcticDEM():
         if os.path.exists(_export_name):
             pass
         else:
-            # get bounding box and date of DEM to use 
+            # get bounding box and date of DEM to use
             # in satellite imagery search
             with rio.open_rasterio(filepath, chunks='auto') as _dem:
                 _date = pd.to_datetime(_dem.attrs['acqdate1'])
@@ -195,7 +196,7 @@ class ArcticDEM():
             d1 = (_date - pd.Timedelta('14d')).strftime('%Y-%m-%d')
             d2 = (_date + pd.Timedelta('14d')).strftime('%Y-%m-%d')
             _search_period = f'{d1}/{d2}'
-            
+
             _catalog = pystac_client.Client.open(
                 "https://planetarycomputer.microsoft.com/api/stac/v1",
                 modifier=pc.sign_inplace
@@ -204,17 +205,17 @@ class ArcticDEM():
                                                 'landsat-c2-l2'],
                                     intersects=aoi_4326,
                                     datetime=_search_period)
-            
+
             _items = _search.item_collection()
             assert len(_items) > 0, 'did not find any images'
-            
+
             _least_cloudy_item = min(_items, key=lambda item: eo.ext(item).cloud_cover)
-            
+
             _asset_dict = {'l':['green','nir08'],
                            'S':['B03', 'B08']}
-            
+
             _assets = _asset_dict[_least_cloudy_item.properties['platform'][0]]
-            
+
             _img = (stackstac.stack(
                 _least_cloudy_item,
                 epsg=3413,
@@ -226,10 +227,10 @@ class ArcticDEM():
 
             _ndwi = ((_img[0,:,:] - _img[1,:,:]) /
                      (_img[0,:,:] + _img[1,:,:]))
-            
+
             with rio.open_rasterio(filepath, chunks='auto') as _ds:
                 _mask = xr.where(_ndwi < 0, 1, 0).rio.reproject_match(_ds)
-            
+
             _mask.attrs['id'] = _least_cloudy_item.id
             _mask.attrs['dem_id'] = _dem_id
 
@@ -238,33 +239,149 @@ class ArcticDEM():
                                                  lock=dask.distributed.Lock(_export_name)
                                                  )
             return _delayed_write
-    
+
     @staticmethod
     def get_all_masks(filepaths: list):
         _lazy_output = [ArcticDEM.make_mask(f) for f in filepaths]
         _ = dask.compute(*_lazy_output)
+
+
+
+####### doing the coregistration
+
+    @staticmethod
+    def and_masks(ref_mask_path, to_reg_mask_path):
+
+        with rio.open_rasterio(
+            ref_mask_path,
+            chunks='auto'
+            ) as _ref_mask, rio.open_rasterio(
+                to_reg_mask_path,
+                chunks='auto') as _to_reg_mask:
+
+                _ref_mask_id = _ref_mask.attrs['id']
+                _to_reg_mask_id = _to_reg_mask.attrs['id']
+
+                _mask = ((_ref_mask & _to_reg_mask) == 1).squeeze().compute().data
+
+                if _mask.sum() == 0:
+                    print('no overlapping regions of stable terrain in masks, use reference mask only')
+                    return (_ref_mask == 1).squeeze().compute().data, _ref_mask_id
+                else:
+                    return _mask, ' & '.join([_ref_mask_id, _to_reg_mask_id])
+
+
+    @staticmethod
+    def copy_reference(reference, dem_mask_dict):
+        with rio.open_rasterio(reference, chunks='auto') as ref_dem:
+            output_name = reference.replace('padded', 'coregd')
+            if os.path.exists(output_name):
+                return None
+            else:
+                
+                _reference_attrs = ref_dem.attrs
+                
+                attrs = {}
+                
+                attrs['nmad_before'] = np.nan
+                attrs['nmad_after'] = np.nan
+                attrs['median_before'] = np.nan
+                attrs['median_after'] = np.nan
+                
+                with rio.open_rasterio(dem_mask_dict[reference]) as _mask:
+                    attrs['coregistration_mask'] = _mask.attrs['id']
+                    
+                for k, v in _reference_attrs.items():
+                    new_k = 'ref_' + k
+                    attrs[new_k] = v
+                    
+                ref_dem.attrs = attrs
+                
+                ref_dem.rio.to_raster(output_name)  
+
+
+    @staticmethod
+    @dask.delayed
+    def coreg(pair, dem_mask_dict):
+        ref_dem_path, to_reg_dem_path = pair
+        ref_mask_path = dem_mask_dict[ref_dem_path]
+        to_reg_mask_path = dem_mask_dict[to_reg_dem_path]
+
+        output_name = to_reg_dem_path.replace('padded', 'coregd')
+        if os.path.exists(output_name):
+            print(f'already done: {output_name}\nexiting...')
+            return None
+        
+        with rio.open_rasterio(ref_dem_path, chunks='auto') as _dem:
+            _reference_attrs = _dem.attrs
+        with rio.open_rasterio(to_reg_dem_path, chunks='auto') as _dem:
+            _to_reg_attrs = _dem.attrs
+        
+        _ref = xdem.DEM(ref_dem_path)
+        _to_reg = xdem.DEM(to_reg_dem_path)
+        _mask, _mask_ids = ArcticDEM.and_masks(ref_mask_path, to_reg_mask_path)
+        
+        _pipeline = xdem.coreg.NuthKaab() + xdem.coreg.Tilt()
+        
+        try:
+            _pipeline.fit(
+                reference_dem=_ref,
+                dem_to_be_aligned=_to_reg,
+                inlier_mask=_mask
+            )
+            
+            coregistered = _pipeline.apply(_to_reg)
+            
+            stable_diff_before = (_ref - _to_reg)[_mask]
+            stable_diff_after = (_ref - coregistered)[_mask]
+            
+            median_before = np.ma.median(stable_diff_before)
+            median_after = np.ma.median(stable_diff_after)
+            
+            nmad_before = xdem.spatialstats.nmad(stable_diff_before)
+            nmad_after = xdem.spatialstats.nmad(stable_diff_after)
+            
+            output = coregistered.to_xarray()
+
+            output.attrs['nmad_before'] = nmad_before
+            output.attrs['nmad_after'] = nmad_after
+            output.attrs['median_before'] = median_before
+            output.attrs['median_after'] = median_after
+            
+            output.attrs['coregistration_mask'] = _mask_ids
+            
+            for k, v in _reference_attrs.items():
+                new_k = 'ref_' + k
+                output.attrs[new_k] = v
+            
+            for k, v in _to_reg_attrs.items():
+                new_k = 'to_reg_' + k
+                output.attrs[new_k] = v
+        
+        except Exception as e:
+            print(e)
+            print(f'failed: {to_reg_dem_path}')
+            
+        return output.rio.to_raster(output_name,
+                                    compute=True,
+                                    lock=dask.distributed.Lock(output_name))
         
 
-        
-####### doing the coregistration
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     # @staticmethod
     # def get_date(fname):
@@ -281,23 +398,23 @@ class ArcticDEM():
     #     queries planetary computer stac catalog for landsat &
     #     sentinel images `drange` days either side of the given date,
     #     that intersect the bounding box, bbox
-        
+
     #     inputs:
     #         - bbox: (tuple) min_lon, min_lat, max_lon, max_lat
     #         - date: (pandas timestamp)
     #         - crs: to project outputs
     #         - kwargs: `drange` pandas timedelta string for +/-
     #     either side of date. default=14d
-        
+
     #     uses the least cloudy scene identified within the search period
     #     uses ndwi and threshold of 0 to decide what is stable terrain.
-        
+
     #     returns: lazy/chunked dataarray. binary mask. 1=stable, 0=not
-        
+
     #     '''
     #     # default lookup either side of date
     #     drange = kwargs.get('drange', '14d')
-        
+
     #     _catalog = pystac_client.Client.open(
     #         "https://planetarycomputer.microsoft.com/api/stac/v1",
     #         modifier=pc.sign_inplace
@@ -311,22 +428,22 @@ class ArcticDEM():
     #                             datetime=_search_period)
     #     _items = _search.item_collection()
     #     assert len(_items) > 0, 'did not find any images'
-        
+
     #     least_cloudy_item = min(_items, key=lambda item: eo.ext(item).cloud_cover)
 
     #     _asset_dict = {'l':['green','nir08'],
     #                    'S':['B03', 'B08']}
 
     #     _assets = _asset_dict[least_cloudy_item.properties['platform'][0]]
-        
+
     #     img = (stackstac.stack(
     #         least_cloudy_item, epsg=crs, assets=_assets
     #         ).squeeze()
     #         .rio.clip_box(*bbox, crs=4326) # because bbox is in lat/lon
     #         )
-        
+
     #     # can use [] indexing here because the order
-    #     # of assets in _asset dict is consistent 
+    #     # of assets in _asset dict is consistent
     #     ndwi = ((img[0,:,:] - img[1,:,:]) /
     #             (img[0,:,:] + img[1,:,:]))
 
@@ -335,7 +452,7 @@ class ArcticDEM():
     # @staticmethod
     # def prep_reference(reference: str) -> tuple:
     #     '''
-    #     helper for prearing the reference DEM when doing 
+    #     helper for prearing the reference DEM when doing
     #     lots of co-registrations. (so no need to keep opening it)
     #     inputs:
     #         - reference: str. path to reference dem
@@ -363,26 +480,26 @@ class ArcticDEM():
     #     inputs:
     #         - dem_to_reg: str. file path to dem to register
     #         - the_reference. tuple. output of `prep_reference()`
-        
+
     #     gets stable terrain mask for `dem_to_reg` and & it with
-    #     the reference mask for a unique stable terrain mask for 
+    #     the reference mask for a unique stable terrain mask for
     #     this coregistration pair.
-        
+
     #     apply NuthKaab() and Tilt() in pipeline
     #     get nmad and median difference over stable terrain
     #     before and after and add these stats to the output
     #     dataarray
-        
+
     #     returns: nothing. just exports the coregistered dem
     #     to path: /coregistered/dem_to_reg
     #     '''
     #     # unpack 'the_reference'
     #     reference, ref, ref_date, ref_bounds, ref_mask = the_reference
-        
+
     #     to_reg = xdem.DEM(dem_to_reg)
     #     to_reg_date = ArcticDEM.get_date(dem_to_reg)
-        
-    #     # can use ref_bounds here - because they've already 
+
+    #     # can use ref_bounds here - because they've already
     #     # been padded to same extent
     #     to_reg_mask = ArcticDEM.make_mask(ref_bounds, to_reg_date)
 
@@ -406,10 +523,10 @@ class ArcticDEM():
     #     # statistics
     #     stable_diff_before = (ref - to_reg)[combined_mask]
     #     stable_diff_after = (ref - regd)[combined_mask]
-        
+
     #     before_median = np.ma.median(stable_diff_before)
     #     after_median = np.ma.median(stable_diff_after)
-        
+
     #     before_nmad = xdem.spatialstats.nmad(stable_diff_before)
     #     after_nmad = xdem.spatialstats.nmad(stable_diff_after)
 
@@ -419,11 +536,11 @@ class ArcticDEM():
     #     output.attrs['to_register'] = dem_to_reg
     #     output.attrs['to_register_date'] = ArcticDEM.get_date(dem_to_reg).strftime('%Y-%m-%d')
     #     output.attrs['to_reg_mask'] = to_reg_mask['id'].values.item()
-        
+
     #     output.attrs['reference'] = reference
     #     output.attrs['reference_date'] = ArcticDEM.get_date(reference).strftime('%Y-%m-%d')
     #     output.attrs['ref_mask'] = ref_mask['id'].values.item()
-        
+
     #     output.attrs['before_nmad'] = before_nmad
     #     output.attrs['after_nmad'] = after_nmad
     #     output.attrs['before_median'] = before_median

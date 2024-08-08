@@ -35,7 +35,6 @@ if __name__ == '__main__':
         os.path.join(directory, glob('line*.geojson', root_dir=directory)[0])
     )
     centreline_wkt = centreline.loc[0, 'geometry'].wkt
-    
 
     dems = []
     attrs = []

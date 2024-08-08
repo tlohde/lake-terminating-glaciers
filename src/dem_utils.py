@@ -12,6 +12,7 @@ import pandas as pd
 import planetary_computer as pc
 import pystac_client
 from pystac.extensions.eo import EOExtension as eo
+from rasterio.enums import Resampling
 import rioxarray as rio
 import shapely
 from utils import misc, Trends
@@ -283,10 +284,10 @@ class ArcticDEM():
                 
                 attrs = {}
                 
-                attrs['nmad_before'] = np.nan
-                attrs['nmad_after'] = np.nan
-                attrs['median_before'] = np.nan
-                attrs['median_after'] = np.nan
+                attrs['nmad_before'] = 0.0
+                attrs['nmad_after'] = 0.0
+                attrs['median_before'] = 0.0
+                attrs['median_after'] = 0.0
                 
                 with rio.open_rasterio(dem_mask_dict[reference]) as _mask:
                     attrs['coregistration_mask'] = _mask.attrs['id']
@@ -367,7 +368,26 @@ class ArcticDEM():
                                     lock=dask.distributed.Lock(output_name))
         
 
-
+    def downsample(dem, factor=10):
+        new_width = int(dem.rio.width / factor)
+        new_height = int(dem.rio.height / factor)
+        
+        downsampled = dem.rio.reproject(
+            dem.rio.crs,
+            shape=(new_height, new_width),
+            resampling=Resampling.bilinear
+        )
+        
+        downsampled.rio.write_nodata(np.nan)
+        
+        downsampled.attrs['description'] = f'''
+        time dependent coregistered elvations. bilinearly downsampled by
+        factor of {factor} from {dem.rio.resolution()} m to
+        {np.round(downsampled.rio.resolution(),4).tolist()} m.
+        '''
+        downsampled = downsampled.rio.write_crs('epsg:3413')
+        
+        return downsampled
 
 
 

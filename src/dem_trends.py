@@ -3,9 +3,13 @@ for computing dh/dt trends from stack of DEMs
 using theilslopes as a robust estimator
 relies on dask for lazy computation and export
 """
+import dask
+from dem_utils import ArcticDEM
 import argparse
 from glob import glob
 import os
+import dask.distributed
+import logging
 import pandas as pd
 import utils
 import warnings
@@ -13,47 +17,97 @@ import xarray as xr
 
 
 if __name__ == "__main__":
-    from dask.distributed import Client, LocalCluster
-    cluster = LocalCluster()
+
+    _starttime = pd.Timestamp.now()    
+    cluster = dask.distributed.LocalCluster(silence_logs=logging.ERROR)
     client = cluster.get_client()
-    print('cluster set up')
 
     # set directory
     parser = argparse.ArgumentParser()
     parser.add_argument('--directory')
+    parser.add_argument('--nmad',
+                        type=float,
+                        help='nmad threshold. only use coregistered DEMs with nmad_after < specified nmad',
+                        default=2.0)
+    parser.add_argument('--median',
+                        type=float,
+                        help='median threshold. only use coregistered DEMs with median_after < specified median',
+                        default=1.0)
     args = parser.parse_args()
     directory = args.directory
-    os.chdir(f'../data/arcticDEM/{directory}/coregistered')
-    print(f'working here: {os.getcwd()}')
-    
-    f = glob('stacked_coregistered*.zarr')
-    assert len(f)==1, 'not enough or too many input files'
-    
-    f = f[0]
-    print(f'stacked file: {f}')
-    print(f'the time is now:{pd.Timestamp.now().strftime("%H:%M:%S")}')
+    nmad_threshold = args.nmad
+    median_threshold = args.median
+
+    # keep cwd as src/
+    # append directory to filepaths
+    files = glob('stacked_coregd*.zarr',
+                 root_dir=directory)
+    assert len(files)==1, 'not enough or too many input files'
+    file = os.path.join(directory, files[0])
+
     with warnings.catch_warnings(action='ignore'):
-        with xr.open_dataset(f, engine='zarr', chunks='auto') as ds:
-            print('have opened it')
-            print(ds)
-            print(f'ds shape: {ds['z'].shape}\n now chunking to\ny: {len(ds.y) // 2}\nx: {len(ds.x) // 5}')
-            ds = ds['z'].chunk(chunks={'y': len(ds.y) // 2,
-                                       'x': len(ds.x) // 5})
+        with xr.open_dataset(file,
+                             engine='zarr', 
+                             ) as ds:
             
-            print('coarsen over 10x10 grid - i.e down sample to 20 m')
-            median = ds.coarsen(dim={'x': 10, 'y':10},
-                                boundary='trim').median()
+            centreline = ds.attrs['centreline']
+            # idx = ((ds['nmad_after'] < ds['nmad_before']) 
+            #        & (ds['median_after'] < ds['median_before']))
+            
+            idx = ((ds['nmad_after'] < nmad_threshold) 
+                   & (ds['median_after'] < median_threshold))
+            
+            print(f'using {idx.sum().item()} out of possible {len(ds.time)} DEMs')
+            
+            dem = ds['z'].sel(time=idx).chunk(chunks={'y': len(ds.y) // 4,
+                                                     'x': len(ds.x) // 4})
+            
+            _timestamps = pd.to_datetime(
+                dem['time'].data
+                ).to_series().apply(
+                    lambda t: t.strftime('%Y-%m-%d %H:%M:%S')
+                    ).tolist()
+            
+            downsampled = ArcticDEM.downsample(dem, factor=10)
+            
+            downsampled = downsampled.chunk(
+                {'time': -1,
+                 'y': 'auto',
+                 'x': 'auto'}
+                )
+            
+            n = downsampled.count(dim='time').rename('n')
+                        
+            trend = utils.Trends.make_robust_trend(downsampled,
+                                                   inp_core_dim='time')
 
-            print('rechunking...')
-            median = median.chunk({'time': -1, 'x':'auto', 'y':'auto'})
+            trend = trend.rename('sec')
+            
+            trend = xr.merge([trend, n])
+            
+            trend.attrs = {
+                'description': '''
+                theilslope estimates of surface elevation change (sec)
+                high_slope and low_slope are the 0.95 confidence interval
+                ''',
+                'timestamps': _timestamps,
+                'dem_ids': ds['to_reg_dem_id'].data.tolist(),
+                'reference_dem': list(set(ds['ref_dem_id'].data.tolist()))[0],
+                'median_threshold': median_threshold,
+                'nmad_threshold': nmad_threshold,
+                'centreline': centreline,
+                }
+            
+            trend.rio.write_crs(input_crs=downsampled.rio.crs,
+                                inplace=True)
+            
+            trend.to_zarr(
+                os.path.join(directory, 'sec.zarr'),
+                compute=True
+                )
 
-            print('lazily compute spatial trends...')
-            trend = utils.make_robust_trend(median, inp_core_dim='time')
-            print(f'trend dataset {trend}')
-            print('computing and exporting....')
-            trend.to_zarr('robust_spatial_trend_20x20.zarr', compute=True)
-    print('shutting down client')
-    print(f'the time is now:{pd.Timestamp.now().strftime("%H:%M:%S")}')
+    _endtime = pd.Timestamp.now()
+    print(f'operation took: {_endtime - _starttime}')
+
     client.shutdown()
     cluster.close()
-    print('done')

@@ -17,5 +17,5 @@
 |`dem_padder.py`|`directory`|pads all DEMs in `directory` to same extent|- [x] this can be removed, and this routine put inside `dem_download_tiles.py`<br>- see [this](https://github.com/tlohde/isortuarsuupSermia_2/blob/0dee85a72c1ade2b22d32d2d7888a4072e44aa09/src/utils.py#L268) for how|
 |`dem_coregister.py`|`directory`|- coregisters all DEMs in directory to reference<br> - NOTE: requires one DEM to be called 'reference|- [x] auto-magically select reference (see [this](https://github.com/tlohde/isortuarsuupSermia_2/blob/0dee85a72c1ade2b22d32d2d7888a4072e44aa09/src/utils.py#L314) for how to do so lazily) and copy across<br>- [ ] tidy up/delete original DEMs (for space savings)|
 |`dem_copying_reference.py`|`directory`|copies reference DEM into /coregistered directory|- [x] remove this and include within `dem_coregister.py`|
-|`dem_stacking.py`|`directory`|stacks all coregistered DEMs, adds time dimension|<br>- [ ] fix so uses `acqdate1` as time<br>- [ ] add more complete metadata|
-|`dem_trends.py`|`directory`|reads in zarr stack; coarsens; computes thiel-sen estimator|- [ ] use `rasterio` for downsampling *not `.coarsen()`*|
+|`dem_stacking.py`|`directory`|stacks all coregistered DEMs, adds time dimension|<br>- [x] fix so uses `acqdate1` as time<br>- [x] add more complete metadata|
+|`dem_trends.py`|`directory`|reads in zarr stack; coarsens; computes thiel-sen estimator|- [x] use `rasterio` for downsampling *not `.coarsen()`*|

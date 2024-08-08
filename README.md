@@ -4,6 +4,7 @@
 
 ### workflow
 #### elevation
+run these scripts, in this order...
 - `make_dirs.py`
     - makes a directory for in `data/` for each centreline in `data/streams_v2.geojson`
     - and puts copy of centreline (*singular*) in each directory
@@ -28,10 +29,29 @@
     - stable terrain mask used for coregistration is the logical and of both `masks_*`, except when there are no overlapping valid pixels, in which case, revert to reference mask.
     - all meta-data from reference, and to_register DEM are added to the output `coregd_`
     - reference DEM is copied / renamed.
-
-
-
-
+- `dem_stacking.py`
+    - usage: `python src/dem_stacking.py --directory data/id1_6685x_-3188046y/`
+    - inputs: `--directory`
+    - outputs: `stacked_coregd.zarr` folder/file
+    - for given directory containing multiple DEMs that have been coregistered (filename: `coregd_*`), read in and stack in time dimension.
+    - retain *all* metadata and append to stack. export as zarr
+    - also export a `coregistration_metadata.parquet` containing the metadata
+- `dem_trends.py`
+    - usage: `python src/dem_trends.py --directory data/id#_Xx_Yy --nmad 2.5 --median 2`
+    - inputs: `--directory`, `--nmad` (default 2.0), `--median` (default 1.0)
+    - outputs `sec.zarr`
+    - for given directory
+        - open the stack of co-registered DEMs (`stacked_coregd.zarr`)
+        - filter stack by `nmad_after` and `median_after` to only include DEMs whose values we 'trust'
+        - down sample (by factor of 10 to 20x20 m using bilinear)
+        - compute robust trends using `scipy.stats.theilslopes()`
+        - export trends to `sec.zarr`
+        - output has dimensions: `x`, `y` and `result`. where `result` has length four, and includes the slope estimate (`slope`) along with the 0.95 confidence intervals (`high_slope` and `low_slope`) as well as `intercept`
+        - output has variables `sec` (dim: `y`, `x`, `result`) and `n` (dim: `y`, `x`) which counts the number of not null observations
+- `dem_cleanup.py`
+    - usage: `python src/dem_cleanup.py --directory data/id#_Xx_Yy/`
+    - inputs: `--directory`
+    - deletes all `.tiff` files in directory
 
 ### code
 #### `imagery.py`
@@ -64,8 +84,6 @@ computes and exports velocity trend field around each centreline using the Theil
 
 this leans heavily on the `CentreLiner()` class in `velocity_helpers.py`
 
-#### `download_data/download_arcticDEM_tiles.py`
-- `get_dem()` : convenience function for lazily clipping and masking COG instance of arctic DEM strip tile.
 
 ### data
 see [data/README.md](data/data_README.md) for details on individual data files used/created
@@ -95,10 +113,5 @@ see [here](https://www.pgc.umn.edu/data/arcticdem/)
 Porter, Claire, et al., 2022, "ArcticDEM - Strips, Version 4.1", https://doi.org/10.7910/DVN/C98DVS, Harvard Dataverse, V1, Accessed: 4th June 2024. 
 
 
-## analyses
-### ice velocity
-robust spatial trends computed using the Theil-Sen estimator
 
-### elevation
-DEM
 

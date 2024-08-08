@@ -47,6 +47,8 @@ if __name__ == '__main__':
     # keep cwd as src/
     # append directory to filepaths
     dem_files = [os.path.join(directory, f) for f in glob('padded_*', root_dir=directory)]
+    
+    # TODO FIX THIS TO ONLY HANDLE SINGLE MASK 
     mask_files = [os.path.join(directory, f) for f in glob('mask_*', root_dir=directory)]
 
     assert len(dem_files) == len(mask_files), 'unequal number of DEMs and masks'

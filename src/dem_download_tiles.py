@@ -21,9 +21,6 @@ import os
 
 if __name__ == '__main__':
     
-    cluster = dask.distributed.LocalCluster(silence_logs=logging.ERROR)
-    client = cluster.get_client()
-
     script_dir = os.path.dirname(os.path.realpath(__file__))
 
     parser = argparse.ArgumentParser(prog='arctic DEM downloader',
@@ -82,12 +79,13 @@ if __name__ == '__main__':
 
     # intersect catalog with centreline geometry
     catalog = catalog.loc[catalog.intersects(line_geom)]
-    # print(f'catalog contains {len(catalog)} DEMs after intsersecting with centreline')
-
+    print(f'catalog contains {len(catalog)} DEMs after intsersecting with centreline')
+    
     # start dask cluster
     # lazily apply `get_dem` for bitmasking, clipping, padding, and downloading 
     # each DEMs in filtered catalog
-
+    cluster = dask.distributed.LocalCluster(silence_logs=logging.ERROR)
+    client = cluster.get_client()
         
     lazy_download = [ArcticDEM.get_dem(row,
                                         bounds,

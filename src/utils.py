@@ -11,6 +11,7 @@ from scipy import interpolate, optimize
 from scipy.stats.mstats import theilslopes
 import shapely
 import sys
+import warnings
 import xarray as xr
 
 
@@ -106,7 +107,8 @@ class Trends():
             return np.stack((np.nan, np.nan, np.nan, np.nan),
                             axis=-1)
         else:
-            slope, intercept, low, high = theilslopes(y[~idx], x[~idx])
+            with warnings.catch_warnings(action='ignore'):
+                slope, intercept, low, high = theilslopes(y[~idx], x[~idx])
             return np.stack((slope, intercept, low, high),
                             axis=-1)
 

@@ -172,7 +172,8 @@ if __name__ == '__main__':
     }
 
     demstack.to_zarr(
-        os.path.join(directory, 'stacked_coregd.zarr')
+        os.path.join(directory, 'stacked_coregd.zarr'),
+        mode='w'
     )
     
     client.shutdown()

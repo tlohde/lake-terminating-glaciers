@@ -103,7 +103,8 @@ if __name__ == "__main__":
             
             trend.to_zarr(
                 os.path.join(directory, 'sec.zarr'),
-                compute=True
+                mode='w',
+                compute=True,
                 )
 
     _endtime = pd.Timestamp.now()

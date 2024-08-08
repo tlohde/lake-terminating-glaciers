@@ -23,12 +23,13 @@ parser = argparse.ArgumentParser(
 )
 
 parser.add_argument("--centrelines",
-                    default='data/streams_v2.geojson',
+                    default='data/streams_v3.geojson',
                     help='''
                     supplied as relative path from whatever
                     dir script is called from.
-                    default:'data/streams_v2.geojson'
+                    default:'data/streams_v3.geojson'
                     ''')
+
 args = parser.parse_args()
 path_to_centrelines = args.centrelines
 

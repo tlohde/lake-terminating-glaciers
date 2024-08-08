@@ -64,7 +64,7 @@ class ArcticDEM():
         catalog['downloadurl'] = (catalog['s3url']
                                   .apply(lambda x: (
                                       x.replace(text_to_replace, "")
-                                      .replace('.json', '_dem.tiff')))
+                                      .replace('.json', '_dem.tif')))
                                   )
         catalog['bitmaskurl'] = (catalog['downloadurl']
                                 .apply(lambda x: x.replace('_dem', '_bitmask')))
@@ -100,8 +100,10 @@ class ArcticDEM():
         to download the lazy object call `dask.compute()`
         '''
         # lazily open and clip DEM and bitmask COGs to bounds
-        with rio.open_rasterio(row.downloadurl, chunks='auto') as _dem,\
-            rio.open_rasterio(row.bitmaskurl, chunks='auto') as _bitmask:
+        with rio.open_rasterio(row.downloadurl,
+                               chunks='auto') as _dem,\
+            rio.open_rasterio(row.bitmaskurl,
+                              chunks='auto') as _bitmask:
 
                 _fill_value = _dem.attrs['_FillValue']
                 _dem_crs = _dem.rio.crs.to_epsg()
@@ -128,7 +130,7 @@ class ArcticDEM():
                 attributes['geom'] = attributes['geom'].wkt
                 _padded.attrs = attributes
 
-                _output_fname = f'padded_{row.dem_id}.tiff'
+                _output_fname = f'padded_{row.dem_id}.tif'
                 _output_path = os.path.join(outdir, _output_fname)
 
                 _delayed_write = _padded.rio.to_raster(_output_path,
@@ -175,8 +177,8 @@ class ArcticDEM():
         '''
         _dem_id = (os.path.basename(filepath)
                    .split('padded_')[-1]
-                   .split('.tiff')[0])
-        _export_name = f'mask_{_dem_id}.tiff'
+                   .split('.tif')[0])
+        _export_name = f'mask_{_dem_id}.tif'
 
         # if it already exists stop
         if os.path.exists(_export_name):
@@ -279,26 +281,26 @@ class ArcticDEM():
             if os.path.exists(output_name):
                 return None
             else:
-                
+
                 _reference_attrs = ref_dem.attrs
-                
+
                 attrs = {}
-                
+
                 attrs['nmad_before'] = 0.0
                 attrs['nmad_after'] = 0.0
                 attrs['median_before'] = 0.0
                 attrs['median_after'] = 0.0
-                
+
                 with rio.open_rasterio(dem_mask_dict[reference]) as _mask:
                     attrs['coregistration_mask'] = _mask.attrs['id']
-                    
+
                 for k, v in _reference_attrs.items():
                     new_k = 'ref_' + k
                     attrs[new_k] = v
-                    
+
                 ref_dem.attrs = attrs
-                
-                ref_dem.rio.to_raster(output_name)  
+
+                ref_dem.rio.to_raster(output_name)
 
 
     @staticmethod
@@ -312,81 +314,81 @@ class ArcticDEM():
         if os.path.exists(output_name):
             print(f'already done: {output_name}\nexiting...')
             return None
-        
+
         with rio.open_rasterio(ref_dem_path, chunks='auto') as _dem:
             _reference_attrs = _dem.attrs
         with rio.open_rasterio(to_reg_dem_path, chunks='auto') as _dem:
             _to_reg_attrs = _dem.attrs
-        
+
         _ref = xdem.DEM(ref_dem_path)
         _to_reg = xdem.DEM(to_reg_dem_path)
         _mask, _mask_ids = ArcticDEM.and_masks(ref_mask_path, to_reg_mask_path)
-        
+
         _pipeline = xdem.coreg.NuthKaab() + xdem.coreg.Tilt()
-        
+
         try:
             _pipeline.fit(
                 reference_dem=_ref,
                 dem_to_be_aligned=_to_reg,
                 inlier_mask=_mask
             )
-            
+
             coregistered = _pipeline.apply(_to_reg)
-            
+
             stable_diff_before = (_ref - _to_reg)[_mask]
             stable_diff_after = (_ref - coregistered)[_mask]
-            
+
             median_before = np.ma.median(stable_diff_before)
             median_after = np.ma.median(stable_diff_after)
-            
+
             nmad_before = xdem.spatialstats.nmad(stable_diff_before)
             nmad_after = xdem.spatialstats.nmad(stable_diff_after)
-            
+
             output = coregistered.to_xarray()
 
             output.attrs['nmad_before'] = nmad_before
             output.attrs['nmad_after'] = nmad_after
             output.attrs['median_before'] = median_before
             output.attrs['median_after'] = median_after
-            
+
             output.attrs['coregistration_mask'] = _mask_ids
-            
+
             for k, v in _reference_attrs.items():
                 new_k = 'ref_' + k
                 output.attrs[new_k] = v
-            
+
             for k, v in _to_reg_attrs.items():
                 new_k = 'to_reg_' + k
                 output.attrs[new_k] = v
-        
+            
+            return output.rio.to_raster(output_name,
+                            compute=True,
+                            lock=dask.distributed.Lock(output_name))
+
         except Exception as e:
             print(e)
             print(f'failed: {to_reg_dem_path}')
-            
-        return output.rio.to_raster(output_name,
-                                    compute=True,
-                                    lock=dask.distributed.Lock(output_name))
-        
+
 
     def downsample(dem, factor=10):
         new_width = int(dem.rio.width / factor)
         new_height = int(dem.rio.height / factor)
-        
+
         downsampled = dem.rio.reproject(
             dem.rio.crs,
             shape=(new_height, new_width),
             resampling=Resampling.bilinear
         )
-        
+
         downsampled.rio.write_nodata(np.nan)
-        
+
         downsampled.attrs['description'] = f'''
         time dependent coregistered elvations. bilinearly downsampled by
         factor of {factor} from {dem.rio.resolution()} m to
         {np.round(downsampled.rio.resolution(),4).tolist()} m.
         '''
         downsampled = downsampled.rio.write_crs('epsg:3413')
-        
+
         return downsampled
 
 

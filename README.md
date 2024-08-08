@@ -6,7 +6,8 @@
 #### elevation
 run these scripts, in this order...
 - `make_dirs.py`
-    - makes a directory for in `data/` for each centreline in `data/streams_v2.geojson`
+    - usage: `python src/make_dirs.py --centrelines data/streams_v3.geojson`
+    - makes a directory for in `data/` for each centreline in `data/streams_v3.geojson`
     - and puts copy of centreline (*singular*) in each directory
 - `dem_download_tiles.py`
     - usage: `python dem_download_tiles.py --directory data/id#_Xx_Yy --months 6 7 8 9 --buffer 5000`
@@ -51,7 +52,7 @@ run these scripts, in this order...
 - `dem_cleanup.py`
     - usage: `python src/dem_cleanup.py --directory data/id#_Xx_Yy/`
     - inputs: `--directory`
-    - deletes all `.tiff` files in directory
+    - deletes all `.tif` files in directory
 
 ### code
 #### `imagery.py`

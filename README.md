@@ -4,7 +4,11 @@
 
 ### workflow
 #### elevation
-run these scripts, in this order...
+
+```bash
+bash src/elevation_workflow.sh
+```
+will run these scripts, in this order...
 - `make_dirs.py`
     - usage: `python src/make_dirs.py --centrelines data/streams_v3.geojson`
     - makes a directory for in `data/` for each centreline in `data/streams_v3.geojson`
@@ -86,32 +90,39 @@ computes and exports velocity trend field around each centreline using the Theil
 this leans heavily on the `CentreLiner()` class in `velocity_helpers.py`
 
 
-### data
-see [data/README.md](data/data_README.md) for details on individual data files used/created
-mosaic, and surface/bed topography.
-
 ## data sources
+to download data required for analyses / visualisation
+```bash
+bash src/download_inputs.sh
+```
 
 ### ice marginal lakes
-
-#### paper
 how, p., et al., (2021) greenland-wide inventory of ice marginal lakes using a multi-method approach. *sci rep* **11**, 4481 https://doi.org/10.1038/s41598-021-83509-1
 
-#### dataset
 wiesmann, a., et al., (2021) esa glaciers climate change initiative (glaciers_cci): 2017 inventory of ice marginal lakes in greenland (IIML), v1. centre for environmental data analysis, 19 february 2021. doi https://dx.doi.org/10.5285/7ea7540135f441369716ef867d217519
 
+to download:
+```bash
+wget -e robots=off --mirror --no-parent -r -P data/iiml/ https://dap.ceda.ac.uk/neodc/esacci/glaciers/data/IIML/Greenland/v1/2017//
+```
+
 ### ice velocity
+see [here](https://its-live.jpl.nasa.gov/#how-to-cite) for list of appropriate references
 
 - ice velocity is taken from the latest version of itslive
 - velocities derived using autoRift on pairs of landsat / sentinel acquisitions.
 - data cubes of velocity are stored on aws and programmatically accessed using the [`itslive`](https://github.com/nasa-jpl/itslive-py/tree/main) python package
 
-#### data sources
-see [here](https://its-live.jpl.nasa.gov/#how-to-cite) for list of appropriate references
 
 ### arctic DEM
-see [here](https://www.pgc.umn.edu/data/arcticdem/)
+see [here](https://www.pgc.umn.edu/data/arcticdem/) for more detail
+
 Porter, Claire, et al., 2022, "ArcticDEM - Strips, Version 4.1", https://doi.org/10.7910/DVN/C98DVS, Harvard Dataverse, V1, Accessed: 4th June 2024. 
+
+catalog of ArcticDEM strips can be downloaded with:
+```bash
+wget --mirror --no-parent -r -P data/arcticDEM/ https://data.pgc.umn.edu/elev/dem/setsm/ArcticDEM/indexes/ArcticDEM_Strip_Index_latest_gpqt.zip
+```
 
 
 

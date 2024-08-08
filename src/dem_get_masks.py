@@ -31,3 +31,5 @@ os.chdir(directory)
 files = [f for f in glob('padded_*')]
 
 ArcticDEM.get_all_masks(files)
+
+ArcticDEM.mask_stable_terrain(directory)

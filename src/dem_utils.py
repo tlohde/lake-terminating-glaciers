@@ -4,8 +4,10 @@ and co-registering of arctic dem strips.
 """
 import dask
 import dask.delayed
+import dask.delayed
 import dask.distributed
 import geopandas as gpd
+from glob import glob
 import numpy as np
 import os
 import pandas as pd
@@ -167,6 +169,60 @@ class ArcticDEM():
         return dict(zip(filepaths, _result))
 
 ###### making masks
+# TODO 
+# fix this so that there is just a single mask
+
+    @staticmethod
+    @dask.delayed
+    def mask_stable_terrain(directory: str,
+                            months: list=[7,8]):
+        line_file = glob('*.geojson', root_dir=directory)
+        line = gpd.read_file(
+            os.path.join(directory, line_file[0])
+        ).loc[0, 'geometry']
+        bounds = line.buffer(5000).bounds
+        aoi_4326 = utils.misc.shapely_reprojector(shapely.box(*bounds),
+                                                  3413, 4326)
+        
+        _catalog = pystac_client.Client.open(
+            "https://planetarycomputer.microsoft.com/api/stac/v1",
+            modifier=pc.sign_inplace
+            )
+        
+        _search = _catalog.search(collections=['sentinel-2-l2a'],
+                                  intersects=aoi_4326,
+                                  datetime='2012-01-01/2025-01-01',
+                                  query={"eo:cloud_cover": {"lt": 10}})
+        
+        _items = _search.item_collection()
+        _items = [i for i in _items if pd.to_datetime(i.properties['datetime']).month in months]
+        
+        imgstack = stackstac.stack(_items,
+                           assets=['B03', 'B08'],
+                           epsg=3413).rio.clip_box(*bounds)
+        
+        img_ids = imgstack['id'].data.tolist()
+        
+        median_ndwi = (
+            (imgstack[:,0,:,:] - imgstack[:,1,:,:]) / 
+            (imgstack[:,0,:,:] + imgstack[:,1,:,:])
+            ).median(dim='time')
+        
+        # open random DEM for reprojecting mask to same extent
+        dem_file = glob('padded_*', root_dir=directory)[0]
+        with rio.open_rasterio(os.path.join(directory, dem_file),
+                               chunks='auto') as _ds:
+            _mask = xr.where(median_ndwi < 0, 1, 0).rio.reproject_match(_ds)
+
+            _mask.attrs['ids'] = img_ids
+            
+            _delayed_write = _mask.rio.to_raster(os.path.join(directory, 'mask.tif'),
+                                                 compute=True,
+                                                 lock=dask.distributed.Lock()
+                                                 )
+            return _delayed_write
+
+
     @staticmethod
     @dask.delayed
     def make_mask(filepath: str):

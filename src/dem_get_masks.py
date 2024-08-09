@@ -43,10 +43,8 @@ if __name__ == '__main__':
     assert os.path.isdir(directory), 'path is not a directory. try again'
 
     lazy_output = ArcticDEM.mask_stable_terrain(directory, months)
-    print('got lazy output')
 
     dask.compute(lazy_output)
-    print('computed')
     
     client.shutdown()
     cluster.close()

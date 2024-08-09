@@ -48,17 +48,10 @@ if __name__ == '__main__':
     # append directory to filepaths
     dem_files = [os.path.join(directory, f) for f in glob('padded_*', root_dir=directory)]
     
-    # TODO FIX THIS TO ONLY HANDLE SINGLE MASK 
+    # works with single mask file
     mask_file = glob('*mask*', root_dir=directory)
     assert len(mask_file)==1, 'not enough / too many mask files found'
     mask_file = os.path.join(directory, mask_file[0])
-
-    # pair DEMs with their masks
-    # dem_mask_pairs = {}
-    # for _d in dem_files:
-    #     for _m in mask_files:
-    #         if os.path.basename(_m).split('mask_')[1] in _d:
-    #             dem_mask_pairs[_d] = _m
     
     ## identify reference dem
     count_dict = ArcticDEM.get_counts_and_reference(dem_files)

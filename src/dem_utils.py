@@ -176,6 +176,7 @@ class ArcticDEM():
     @dask.delayed
     def mask_stable_terrain(directory: str,
                             months: list=[7,8]):
+        
         line_file = glob('*.geojson', root_dir=directory)
         line = gpd.read_file(
             os.path.join(directory, line_file[0])
@@ -203,24 +204,26 @@ class ArcticDEM():
         
         img_ids = imgstack['id'].data.tolist()
         
-        median_ndwi = (
-            (imgstack[:,0,:,:] - imgstack[:,1,:,:]) / 
-            (imgstack[:,0,:,:] + imgstack[:,1,:,:])
-            ).median(dim='time')
+        with np.errstate(invalid='ignore', divide='ignore'):
         
-        # open random DEM for reprojecting mask to same extent
-        dem_file = glob('padded_*', root_dir=directory)[0]
-        with rio.open_rasterio(os.path.join(directory, dem_file),
-                               chunks='auto') as _ds:
-            _mask = xr.where(median_ndwi < 0, 1, 0).rio.reproject_match(_ds)
-
-            _mask.attrs['ids'] = img_ids
+            median_ndwi = (
+                (imgstack[:,0,:,:] - imgstack[:,1,:,:]) / 
+                (imgstack[:,0,:,:] + imgstack[:,1,:,:])
+                ).median(dim='time')
             
-            _delayed_write = _mask.rio.to_raster(os.path.join(directory, 'stable_terrain_mask.tif'),
-                                                 compute=True,
-                                                 lock=dask.distributed.Lock()
-                                                 )
-            return _delayed_write
+            # open random DEM for reprojecting mask to same extent
+            dem_file = glob('padded_*', root_dir=directory)[0]
+            with rio.open_rasterio(os.path.join(directory, dem_file),
+                                chunks='auto') as _ds:
+                _mask = xr.where(median_ndwi < 0, 1, 0).rio.reproject_match(_ds)
+
+                _mask.attrs['ids'] = img_ids
+                
+                _delayed_write = _mask.rio.to_raster(os.path.join(directory, 'stable_terrain_mask.tif'),
+                                                    compute=True,
+                                                    lock=dask.distributed.Lock()
+                                                    )
+                return _delayed_write
 
 
     @staticmethod
@@ -355,36 +358,6 @@ class ArcticDEM():
 
                 ref_dem.rio.to_raster(output_name)
 
-    ### old version with individual masks
-    # @staticmethod
-    # def copy_reference(reference, dem_mask_dict):
-    #     with rio.open_rasterio(reference, chunks='auto') as ref_dem:
-    #         output_name = reference.replace('padded', 'coregd')
-    #         if os.path.exists(output_name):
-    #             return None
-    #         else:
-
-    #             _reference_attrs = ref_dem.attrs
-
-    #             attrs = {}
-
-    #             attrs['nmad_before'] = 0.0
-    #             attrs['nmad_after'] = 0.0
-    #             attrs['median_before'] = 0.0
-    #             attrs['median_after'] = 0.0
-
-    #             with rio.open_rasterio(dem_mask_dict[reference]) as _mask:
-    #                 attrs['coregistration_mask'] = _mask.attrs['id']
-
-    #             for k, v in _reference_attrs.items():
-    #                 new_k = 'ref_' + k
-    #                 attrs[new_k] = v
-
-    #             ref_dem.attrs = attrs
-
-    #             ref_dem.rio.to_raster(output_name)
-
-
     @staticmethod
     @dask.delayed
     def coreg(pair):
@@ -406,8 +379,9 @@ class ArcticDEM():
 
         _ref = xdem.DEM(ref_dem_path)
         _to_reg = xdem.DEM(to_reg_dem_path)
-        _mask = rio.open_rasterio(mask_path)
-        _mask_ids = _mask.attrs['ids']
+        with rio.open_rasterio(mask_path) as _mask:
+            _mask_ids = _mask.attrs['ids']
+            _mask = _mask.squeeze().data == 1
         
         _pipeline = xdem.coreg.NuthKaab() + xdem.coreg.Tilt()
 

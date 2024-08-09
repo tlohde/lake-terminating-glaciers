@@ -91,7 +91,7 @@ if __name__ == "__main__":
                 high_slope and low_slope are the 0.95 confidence interval
                 ''',
                 'timestamps': _timestamps,
-                'dem_ids': ds['to_reg_dem_id'].data.tolist(),
+                'dem_ids': ds['to_reg_dem_id'].sel(time=idx).data.tolist(),
                 'reference_dem': list(set(ds['ref_dem_id'].data.tolist()))[0],
                 'median_threshold': median_threshold,
                 'nmad_threshold': nmad_threshold,
@@ -108,7 +108,7 @@ if __name__ == "__main__":
                 )
 
     _endtime = pd.Timestamp.now()
-    print(f'operation took: {_endtime - _starttime}')
+    # print(f'operation took: {_endtime - _starttime}')
 
     client.shutdown()
     cluster.close()

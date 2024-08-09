@@ -35,10 +35,46 @@ if __name__ == '__main__':
         os.path.join(directory, glob('line*.geojson', root_dir=directory)[0])
     )
     centreline_wkt = centreline.loc[0, 'geometry'].wkt
+        
+###########################
+### helper for handling ###
+## meta-data and merging ##
+###########################
+
+    def make_attr_xrda(attrs):
+        df = pd.DataFrame(attrs)
+
+        df.drop(columns=['AREA_OR_POINT', 'scale_factor', 'add_offset',
+                            '_FillValue', 'long_name', 'to_reg_catalogid1',
+                            'ref_catalogid1', 'to_reg_catalogid2', 'ref_catalogid2'],
+                    errors='ignore',
+                    inplace=True)
+
+        # add boolean column for is reference
+        # df['is_reference'] = df['to_reg_acqdate1'].isnull()
+        if 'to_reg_acqdate1' in df.columns:
+            df['is_reference'] = False
+        else:
+            df['is_reference'] = True
+
+        # copy/duplicate ref_/to_reg data for reference DEM
+        for col in df.columns:
+            if 'ref' in col:
+                new_col = col.replace('ref_', 'to_reg_')
+                df.loc[df['is_reference'], new_col] = df.loc[df['is_reference'], col]
+
+        df = df.set_index(
+            pd.to_datetime(df['to_reg_acqdate1'].rename('time'))
+            )
+        
+        return df
+
+###############################################
 
     dems = []
     attrs = []
-
+    merged = []
+    ## 
     for f in corgd_dem_files:
         with rio.open_rasterio(f, chunks='auto') as ds:
             
@@ -68,54 +104,18 @@ if __name__ == '__main__':
                 dems.append(ds)
             
             attrs.append(ds.attrs)
-
-    ####### meta data
-    meta_df = pd.DataFrame(attrs)
-
-    # drop some unwanted columns
-    meta_df.drop(columns=['AREA_OR_POINT', 'scale_factor', 'add_offset',
-                        '_FillValue', 'long_name', 'to_reg_catalogid1',
-                        'ref_catalogid1', 'to_reg_catalogid2', 'ref_catalogid2'],
-                errors='ignore',
-                inplace=True)
-
-    # add boolean column for is reference
-    meta_df['is_reference'] = meta_df['to_reg_acqdate1'].isnull()
-
-    # copy/duplicate ref_/to_reg data for reference DEM
-    for col in meta_df.columns:
-        if 'ref' in col:
-            new_col = col.replace('ref_', 'to_reg_')
-            meta_df.loc[meta_df['is_reference'], new_col] = meta_df.loc[meta_df['is_reference'], col]
-
-    meta_df = meta_df.set_index(
-        pd.to_datetime(meta_df['to_reg_acqdate1'].rename('time'))
-        )
-
-    # add additional metadata
-    meta_df.attrs = {
-        'processed by': 'tlohde',
-        'processed on': pd.Timestamp.now().strftime('%Y/%m/%d %H:%M'),
-        'centreline': centreline_wkt
-    }
-
-    # export to parquet as this preserveds the .attrs
-    meta_df.to_parquet(
-        os.path.join(directory, 'coregistration_metadata.parquet'),
-        engine='pyarrow')
+            
+            meta_ds = make_attr_xrda([ds.attrs])
+            
+            merged.append(xr.merge([ds, meta_ds.to_xarray()]))
 
     #########################
     ###### stacking dems ####
     #########################
-
-    demstack = (xr.concat(dems,
-                        dim='time',
-                        combine_attrs='drop')
+    
+    demstack = (xr.concat(merged,
+                          dim='time')
                 .sortby('time'))
-
-    # combined demstack with meta data
-    demstack = xr.merge([demstack,
-                        meta_df.to_xarray()])
 
     # add metadata descriptions
     demstack['z'].attrs = {
@@ -175,6 +175,22 @@ if __name__ == '__main__':
         os.path.join(directory, 'stacked_coregd.zarr'),
         mode='w'
     )
+    
+    # export metadata dataframe
+    meta_df = (demstack
+               .drop_vars(['x', 'y', 'z'])
+               .to_dataframe())
+
+    meta_df.attrs = {
+        'processed by': 'tlohde',
+        'processed on': pd.Timestamp.now().strftime('%Y/%m/%d %H:%M'),
+        'centreline': centreline_wkt
+    }
+
+    # export to parquet as this preserveds the .attrs
+    meta_df.to_parquet(
+        os.path.join(directory, 'coregistration_metadata.parquet'),
+        engine='pyarrow')
     
     client.shutdown()
     client.close()

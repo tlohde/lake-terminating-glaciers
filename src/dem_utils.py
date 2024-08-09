@@ -216,7 +216,7 @@ class ArcticDEM():
 
             _mask.attrs['ids'] = img_ids
             
-            _delayed_write = _mask.rio.to_raster(os.path.join(directory, 'mask.tif'),
+            _delayed_write = _mask.rio.to_raster(os.path.join(directory, 'stable_terrain_mask.tif'),
                                                  compute=True,
                                                  lock=dask.distributed.Lock()
                                                  )
@@ -331,13 +331,12 @@ class ArcticDEM():
 
 
     @staticmethod
-    def copy_reference(reference, dem_mask_dict):
+    def copy_reference(reference):
         with rio.open_rasterio(reference, chunks='auto') as ref_dem:
             output_name = reference.replace('padded', 'coregd')
             if os.path.exists(output_name):
                 return None
             else:
-
                 _reference_attrs = ref_dem.attrs
 
                 attrs = {}
@@ -346,9 +345,7 @@ class ArcticDEM():
                 attrs['nmad_after'] = 0.0
                 attrs['median_before'] = 0.0
                 attrs['median_after'] = 0.0
-
-                with rio.open_rasterio(dem_mask_dict[reference]) as _mask:
-                    attrs['coregistration_mask'] = _mask.attrs['id']
+                attrs['coregistration_mask'] = 'n/a'
 
                 for k, v in _reference_attrs.items():
                     new_k = 'ref_' + k
@@ -358,14 +355,45 @@ class ArcticDEM():
 
                 ref_dem.rio.to_raster(output_name)
 
+    ### old version with individual masks
+    # @staticmethod
+    # def copy_reference(reference, dem_mask_dict):
+    #     with rio.open_rasterio(reference, chunks='auto') as ref_dem:
+    #         output_name = reference.replace('padded', 'coregd')
+    #         if os.path.exists(output_name):
+    #             return None
+    #         else:
+
+    #             _reference_attrs = ref_dem.attrs
+
+    #             attrs = {}
+
+    #             attrs['nmad_before'] = 0.0
+    #             attrs['nmad_after'] = 0.0
+    #             attrs['median_before'] = 0.0
+    #             attrs['median_after'] = 0.0
+
+    #             with rio.open_rasterio(dem_mask_dict[reference]) as _mask:
+    #                 attrs['coregistration_mask'] = _mask.attrs['id']
+
+    #             for k, v in _reference_attrs.items():
+    #                 new_k = 'ref_' + k
+    #                 attrs[new_k] = v
+
+    #             ref_dem.attrs = attrs
+
+    #             ref_dem.rio.to_raster(output_name)
+
 
     @staticmethod
     @dask.delayed
-    def coreg(pair, dem_mask_dict):
+    def coreg(pair):
         ref_dem_path, to_reg_dem_path = pair
-        ref_mask_path = dem_mask_dict[ref_dem_path]
-        to_reg_mask_path = dem_mask_dict[to_reg_dem_path]
-
+        directory = os.path.dirname(ref_dem_path)
+        mask_path = glob('*mask*', root_dir=directory)
+        assert len(mask_path)==1, 'too many / not enough files that could be the mask'
+        mask_path = os.path.join(directory, mask_path[0])
+        
         output_name = to_reg_dem_path.replace('padded', 'coregd')
         if os.path.exists(output_name):
             print(f'already done: {output_name}\nexiting...')
@@ -378,8 +406,9 @@ class ArcticDEM():
 
         _ref = xdem.DEM(ref_dem_path)
         _to_reg = xdem.DEM(to_reg_dem_path)
-        _mask, _mask_ids = ArcticDEM.and_masks(ref_mask_path, to_reg_mask_path)
-
+        _mask = rio.open_rasterio(mask_path)
+        _mask_ids = _mask.attrs['ids']
+        
         _pipeline = xdem.coreg.NuthKaab() + xdem.coreg.Tilt()
 
         try:

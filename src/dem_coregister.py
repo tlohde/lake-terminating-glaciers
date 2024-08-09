@@ -49,22 +49,22 @@ if __name__ == '__main__':
     dem_files = [os.path.join(directory, f) for f in glob('padded_*', root_dir=directory)]
     
     # TODO FIX THIS TO ONLY HANDLE SINGLE MASK 
-    mask_files = [os.path.join(directory, f) for f in glob('mask_*', root_dir=directory)]
-
-    assert len(dem_files) == len(mask_files), 'unequal number of DEMs and masks'
+    mask_file = glob('*mask*', root_dir=directory)
+    assert len(mask_file)==1, 'not enough / too many mask files found'
+    mask_file = os.path.join(directory, mask_file[0])
 
     # pair DEMs with their masks
-    dem_mask_pairs = {}
-    for _d in dem_files:
-        for _m in mask_files:
-            if os.path.basename(_m).split('mask_')[1] in _d:
-                dem_mask_pairs[_d] = _m
+    # dem_mask_pairs = {}
+    # for _d in dem_files:
+    #     for _m in mask_files:
+    #         if os.path.basename(_m).split('mask_')[1] in _d:
+    #             dem_mask_pairs[_d] = _m
     
     ## identify reference dem
     count_dict = ArcticDEM.get_counts_and_reference(dem_files)
     count_dict = dict(sorted(count_dict.items(), key=lambda item: item[1]))
     reference = max(count_dict, key=lambda key: count_dict[key])
-    # print(f'the reference DEM is: {reference}')
+    print(f'the reference DEM is: {reference}')
 
     # list of dems to register
     _to_register = [f for f in dem_files if f != reference]
@@ -78,14 +78,13 @@ if __name__ == '__main__':
     )
 
     # collect lazy coregistered objects
-    lazy_outputs = [ArcticDEM.coreg(pair, dem_mask_pairs) for pair in coreg_pairs]
+    lazy_outputs = [ArcticDEM.coreg(pair) for pair in coreg_pairs]
     
     # then compute
     _ = dask.compute(*lazy_outputs)
     
     # copy reference DEM
-    _ = ArcticDEM.copy_reference(reference,
-                                    dem_mask_pairs)
+    _ = ArcticDEM.copy_reference(reference)
     
     client.shutdown()
     client.close()

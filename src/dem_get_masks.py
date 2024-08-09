@@ -1,35 +1,52 @@
 """
-get stable terrain masks for all *padded* DEMs in directory
+get stable terrain mask
 """
 import argparse
 import dask
-from glob import glob
 from dem_utils import ArcticDEM
+import logging
 import os
 
-script_dir = os.path.dirname(os.path.realpath(__file__))
+if __name__ == '__main__':
+    
+    # initiate dask cluster
+    cluster = dask.distributed.LocalCluster(silence_logs=logging.ERROR)
+    client = cluster.get_client()
 
-parser = argparse.ArgumentParser(prog='stable terrain mask maker',
-                                description='''
-                                coregistration of arcticDEMs
-                                ''')
+    parser = argparse.ArgumentParser(prog='stable terrain mask maker',
+                                    description='''
+                                    coregistration of arcticDEMs
+                                    ''')
 
-parser.add_argument("--directory",
-                    help='''
-                    supplied as relative path from whatever
-                    dir script is called from.
-                    e.g. 'data/id01_Xx_Yy/')
-                    ''')
+    parser.add_argument("--directory",
+                        help='''
+                        supplied as relative path from whatever
+                        dir script is called from.
+                        e.g. 'data/id01_Xx_Yy/')
+                        ''')
 
-args = parser.parse_args()
-directory = args.directory
+    parser.add_argument("--months",
+                        help='''
+                        list of month numbers. only use satellite images from
+                        these months to construct mask
+                        ''',
+                        type=int, 
+                        nargs='+',
+                        default=[7,8])
 
-# set directory
-assert os.path.isdir(directory), 'path is not a directory. try again'
-os.chdir(directory)
 
-files = [f for f in glob('padded_*')]
+    args = parser.parse_args()
+    directory = args.directory
+    months = args.months
 
-ArcticDEM.get_all_masks(files)
+    # set directory
+    assert os.path.isdir(directory), 'path is not a directory. try again'
 
-ArcticDEM.mask_stable_terrain(directory)
+    lazy_output = ArcticDEM.mask_stable_terrain(directory, months)
+    print('got lazy output')
+
+    dask.compute(lazy_output)
+    print('computed')
+    
+    client.shutdown()
+    cluster.close()

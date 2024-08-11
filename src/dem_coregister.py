@@ -18,14 +18,17 @@ from dem_utils import ArcticDEM
 from glob import glob
 from itertools import product
 import logging
+import numpy as np
 import os
+from tqdm import tqdm
 
 
 # script_dir = os.path.dirname(os.path.realpath(__file__))
 if __name__ == '__main__':
     
     # initiate dask cluster
-    cluster = dask.distributed.LocalCluster(silence_logs=logging.ERROR)
+    cluster = dask.distributed.LocalCluster(
+        silence_logs=logging.ERROR)
     client = cluster.get_client()
 
     # parse args
@@ -74,7 +77,17 @@ if __name__ == '__main__':
     lazy_outputs = [ArcticDEM.coreg(pair) for pair in coreg_pairs]
     
     # then compute
-    _ = dask.compute(*lazy_outputs)
+    # split into batches - i think this helps if there are
+    # lots of tasks that consume all the resources
+    # a better way to handle this would be specify n_workers / threads
+    # and memory limit when initialising LocalCluster()
+    lazy_output_groups = np.array_split(lazy_outputs,
+                                        len(lazy_outputs) // 10)
+    
+    for grp in tqdm(lazy_output_groups):
+        _ = dask.compute(*grp)
+    
+    # _ = dask.compute(*lazy_outputs)
     
     # copy reference DEM
     _ = ArcticDEM.copy_reference(reference)

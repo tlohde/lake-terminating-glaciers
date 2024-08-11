@@ -1,4 +1,4 @@
-# !/usr/bin/env bash
+h# !/usr/bin/env bash
 
 echo "working on: $1"
 echo "downloading tiles"

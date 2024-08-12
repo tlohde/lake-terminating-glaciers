@@ -1,5 +1,6 @@
 data/*
 !data/streams_v2.geojson
+!data/streams_v3.geojson
 .vscode/
 _nothing.md
 src/__pycache__

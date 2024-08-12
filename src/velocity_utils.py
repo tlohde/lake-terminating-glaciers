@@ -316,7 +316,8 @@ class CentreLiner():
             (self.robust_trend['v_trend']
              .chunk(dict(zip(self.robust_trend['v_trend'].dims,
                              self.robust_trend['v_trend'].shape)))
-             .to_zarr(_path+_file))
+             .to_zarr(_path+_file,
+                      mode='w'))
 
     @dask.delayed
     def export_trend(self):
@@ -327,7 +328,8 @@ class CentreLiner():
         (self.robust_trend['v_trend']
          .chunk(dict(zip(self.robust_trend['v_trend'].dims,
                          self.robust_trend['v_trend'].shape)))
-         .to_zarr(_path+_file))
+         .to_zarr(_path+_file,
+                  mode='w'))
     
     def get_annual_median(self, vars=['v', 'vx', 'vy']):
         '''

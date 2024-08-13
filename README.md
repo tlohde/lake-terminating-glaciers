@@ -1,7 +1,5 @@
 # paper 2
 
-## contents
-
 ### workflow
 #### elevation
 
@@ -25,9 +23,7 @@ will run these scripts, in this order...
     - returns/outputs `.tif`
     - for given directory (`--directory`) take all DEMs with file name `padded_*` and get binary stable terrain mask (where 1==stable terrain; 0==snow/ice/water/unstable terrain) from landsat/sentinel
     - mask is re-projected to same extent & resolution as DEM
-- [ ] TODO update to allow for new `ArcticDEM.mask_stable_terrain()`
 - `dem_coregister.py`
-- [ ] TODO fix this to handle single mask `ArcticDEM.mask_stable_terrain()`
     - usage: `python dem_coregister.py --directory data/id#_Xx_Yy`
     - inputs: `--directory`
     - outputs: coregistered DEMs

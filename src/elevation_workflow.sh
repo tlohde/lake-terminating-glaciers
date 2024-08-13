@@ -1,5 +1,7 @@
 h# !/usr/bin/env bash
 
+# python src/make_dirs.py --centrelines data/streams_v3.geojson
+
 echo "working on: $1"
 echo "downloading tiles"
 python src/dem_download_tiles.py --directory $1 --months 6 7 8 9 --buffer 5000
@@ -20,8 +22,7 @@ echo "tidying up"
 python src/dem_cleanup.py --directory $1
 
 
-# python src/make_dirs.py --centrelines data/streams_v3.geojson
-
+# if you're brave enough to trust the code to whip through everything in one hit:
 # glacier=$(find data/ -type d -name "id*")
 
 # for g in $glacier; do

@@ -32,7 +32,7 @@ if __name__ == '__main__':
     # append directory to filepaths
     corgd_dem_files = [os.path.join(directory, f) for f in glob('coregd_*', root_dir=directory)]
     centreline = gpd.read_file(
-        os.path.join(directory, glob('line*.geojson', root_dir=directory)[0])
+        os.path.join(directory, glob('*.geojson', root_dir=directory)[0])
     )
     centreline_wkt = centreline.loc[0, 'geometry'].wkt
         

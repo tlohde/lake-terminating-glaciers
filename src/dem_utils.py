@@ -170,8 +170,6 @@ class ArcticDEM():
         return dict(zip(filepaths, _result))
 
 ###### making masks
-# TODO 
-# fix this so that there is just a single mask
 
     @staticmethod
     @dask.delayed
@@ -213,18 +211,28 @@ class ArcticDEM():
                 ).median(dim='time')
             
             # open random DEM for reprojecting mask to same extent
-            dem_file = glob('padded_*', root_dir=directory)[0]
-            with rio.open_rasterio(os.path.join(directory, dem_file),
-                                chunks='auto') as _ds:
-                _mask = xr.where(median_ndwi < 0, 1, 0).rio.reproject_match(_ds)
+            dem_file = glob('padded_*', root_dir=directory)
+            if len (dem_file) > 0:
+                dem_file = dem_file[0]
+                _ds = rio.open_rasterio(os.path.join(directory, dem_file),
+                                        chunks='auto')
+            # if already cleaned up and deleted padded dems
+            # use the stacked coreg'd dataset's projection
+            else:
+                print('no padded DEMs, using the stack instead')
+                dem_file = glob('stack*', root_dir=directory)[0]
+                _ds = xr.open_dataset(os.path.join(directory, dem_file),
+                                      engine='zarr')['z']
 
-                _mask.attrs['ids'] = img_ids
-                
-                _delayed_write = _mask.rio.to_raster(os.path.join(directory, 'stable_terrain_mask.tif'),
-                                                    compute=True,
-                                                    lock=dask.distributed.Lock()
-                                                    )
-                return _delayed_write
+            _mask = xr.where(median_ndwi < 0, 1, 0).rio.reproject_match(_ds)
+
+            _mask.attrs['ids'] = img_ids
+            
+            _delayed_write = _mask.rio.to_raster(os.path.join(directory, 'stable_terrain_mask.tif'),
+                                                compute=True,
+                                                lock=dask.distributed.Lock()
+                                                )
+            return _delayed_write
 
 
     @staticmethod
@@ -454,6 +462,7 @@ class ArcticDEM():
 ######## centreline sampling
 
     def sample_along_line(fp: str,
+                          geom=False,
                           var=False):
         '''
         reads in .zarr from file path
@@ -477,8 +486,12 @@ class ArcticDEM():
         '''
         
         assert(os.path.isdir(fp)), 'invalid path'
-        with xr.open_dataset(fp, engine='zarr', chunks='auto') as ds:
-            centreline = shapely.wkt.loads(ds.attrs['centreline'])
+        with xr.open_dataset(fp, engine='zarr') as ds:
+            
+            if geom:
+                centreline = geom
+            else:
+                centreline = shapely.wkt.loads(ds.attrs['centreline'])
             
             # densify line
             points = [centreline.interpolate(i/100, normalized=True)

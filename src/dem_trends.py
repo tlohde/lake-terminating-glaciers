@@ -98,8 +98,8 @@ if __name__ == "__main__":
                 'centreline': centreline,
                 }
             
-            trend.rio.write_crs(input_crs=downsampled.rio.crs,
-                                inplace=True)
+            trend = trend.rio.write_crs(input_crs=downsampled.rio.crs,
+                                        grid_mapping_name='spatial_ref')
             
             trend.to_zarr(
                 os.path.join(directory, 'sec.zarr'),

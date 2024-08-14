@@ -8,7 +8,7 @@ import pyproj
 import rioxarray as rio  # noqa # pylint: disable=unused-import
 import shapely
 import stackstac
-from utils import shapely_reprojector
+import utils
 # from tqdm import tqdm
 import warnings
 import xrspatial as xrs
@@ -34,7 +34,7 @@ def get_annual_median_mosaic(geo,
 
     # desire point to be in a projected crs for buffering
     # but in geographic crs for intersecting with stac catalog
-    poi = shapely_reprojector(
+    poi = utils.misc.shapely_reprojector(
         geo,
         src_crs,
         4326
@@ -73,7 +73,7 @@ def get_annual_median_mosaic(geo,
     # because median mosiac - only want summer images - to
     # minimize seasonal variations
     # clip image to bounding box of circle created by buffer_dist
-    poi = shapely_reprojector(poi, 4326, target_epsg)
+    poi = utils.misc.shapely_reprojector(poi, 4326, target_epsg)
 
     _ds = (_ds
            .sel(time=_ds.time.dt.month.isin(months))
@@ -102,7 +102,7 @@ def animate_rgb(ds):
     # for nice plot and file titles
     # get lat lon coords from centroid of dataarray
     cntr = shapely.box(*ds.rio.bounds()).centroid
-    cntr_4326 = shapely_reprojector(cntr, ds.rio.crs, 4326)
+    cntr_4326 = utils.misc.shapely_reprojector(cntr, ds.rio.crs, 4326)
     lon, lat = cntr_4326.coords.xy
     lon, lat = lon[0], lat[0]
     years = ds.year.values

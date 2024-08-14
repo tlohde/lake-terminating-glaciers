@@ -35,6 +35,7 @@ if __name__ == '__main__':
         os.path.join(directory, glob('*.geojson', root_dir=directory)[0])
     )
     centreline_wkt = centreline.loc[0, 'geometry'].wkt
+    centreline_type = centreline.loc[0, 'lake_land']
         
 ###########################
 ### helper for handling ###
@@ -168,7 +169,8 @@ if __name__ == '__main__':
     demstack.attrs = {
         'processed by': 'tlohde',
         'processed on': pd.Timestamp.now().strftime('%Y/%m/%d %H:%M'),
-        'centreline': centreline_wkt
+        'centreline': centreline_wkt,
+        'lake_land': centreline_type
     }
 
     demstack.to_zarr(

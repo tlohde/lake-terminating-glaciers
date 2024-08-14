@@ -135,9 +135,9 @@ class Tools():
             _dfs = []
             for _val in _vals:
                 # print(f'now gather {_val}')
-                _df_sub = (utils.nearest(_df,
-                                         _col,
-                                         _val)
+                _df_sub = (utils.misc.nearest(_df,
+                                              _col,
+                                              _val)
                            .sort_values(by='mid_date')
                            )
                 if _mad:
@@ -168,7 +168,7 @@ class CentreLiner():
                  get_rgb=False,
                  **kwargs):
         '''
-        geo: shapely polygon of area of interest or shapely linestring
+        geo: shapely point of area of interest or shapely linestring
         index: int. useful index (for matching class instance with
         geojson/geodataframe consisting of multiple aois)
         buff_dist: area around point/linestring to get velocity and imagery
@@ -187,9 +187,9 @@ class CentreLiner():
         # reproject input geo (epsg:3413) to epsg4326
         # and getting coordinate pairs of polygon exterior
         # for interfacing with itslive api
-        self.geo4326 = utils.shapely_reprojector(self.geo,
-                                                 3413,
-                                                 4326)
+        self.geo4326 = utils.misc.shapely_reprojector(self.geo,
+                                                      3413,
+                                                      4326)
 
         self.coords = list(zip(*self.geo4326.exterior.coords.xy))
         # use itslive api to get list of dictionaries of zarr velocity cubes
@@ -293,7 +293,7 @@ class CentreLiner():
         for ds in self.dss:
             _ddt_filtered, _ = Tools.filter_ddt(ds, ddt_range)
             _trends.append(
-                (utils.make_robust_trend(_ddt_filtered[_var])
+                (utils.Trends.make_robust_trend(_ddt_filtered[_var])
                  .rename(f'{_var}_trend'))
                 )
         self.robust_trend = xr.merge(_trends)
@@ -365,8 +365,8 @@ class CentreLiner():
         self.clean_vx = self.median['vx'].isel(year=-1).copy()
         self.clean_vy = self.median['vy'].isel(year=-1).copy()
 
-        self.clean_vx.data = utils.twoD_interp(self.clean_vx.data)
-        self.clean_vy.data = utils.twoD_interp(self.clean_vy.data)
+        self.clean_vx.data = utils.misc.twoD_interp(self.clean_vx.compute())
+        self.clean_vy.data = utils.misc.twoD_interp(self.clean_vy.compute())
 
     def _detectLoop(self, xVals, yVals):
         """ Detect closed loops and nodes in a streamline. """
@@ -609,7 +609,7 @@ class Plotters():
         axs['v_map'].plot(*self.tidy_stream.coords.xy, c='r')
         axs['v_map'].set_title(f'index:{self.index}')
 
-        p = utils.shapely_reprojector(self.point, 3413, 4326)
+        p = utils.misc.shapely_reprojector(self.point, 3413, 4326)
         axs['v_map'].set_title(f'{p.y:.2f} N, {-1*p.x:.2f} W')
 
         self.rgb_img.plot.imshow(rgb='band', ax=axs['rgb'])

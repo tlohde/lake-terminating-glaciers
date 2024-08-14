@@ -32,7 +32,7 @@ class misc():
 
     @staticmethod
     def twoD_interp(img: np.ndarray) -> np.ndarray:
-        misc.validate_type(misc.twoD_interp, locals=locals())
+        # misc.validate_type(misc.twoD_interp, locals=locals())
         h, w = img.shape[:2]
         mask = np.isnan(img)
         xx, yy = np.meshgrid(np.arange(w), np.arange(h))

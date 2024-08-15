@@ -78,5 +78,7 @@ print(f'catalog contains {len(catalog)} DEMs after intsersecting with centreline
 
 
 for row in catalog.itertuples():
-    ArcticDEM.get_dem(row, bounds, directory)
-
+    try:
+        ArcticDEM.get_dem(row, bounds, directory)
+    except Exception as e:
+        print(e)

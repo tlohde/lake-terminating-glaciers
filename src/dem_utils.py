@@ -2,10 +2,6 @@
 contains helper functions for the downloading
 and co-registering of arctic dem strips.
 """
-import dask
-import dask.delayed
-import dask.delayed
-import dask.distributed
 import geopandas as gpd
 from glob import glob
 import numpy as np
@@ -101,75 +97,58 @@ class ArcticDEM():
 
         to download the lazy object call `dask.compute()`
         '''
-        # lazily open and clip DEM and bitmask COGs to bounds
-        with rio.open_rasterio(row.downloadurl,
-                               chunks='auto') as _dem,\
-            rio.open_rasterio(row.bitmaskurl,
-                              chunks='auto') as _bitmask:
+        _output_fname = f'padded_{row.dem_id}.tif'
+        _output_path = os.path.join(outdir, _output_fname)
+        
+        if os.path.exists(_output_path):
+            print(f'already got {_output_path}')
+        else:
+            # open and clip DEM and bitmask COGs to bounds
+            with rio.open_rasterio(row.downloadurl,
+                                chunks='auto') as _dem,\
+                rio.open_rasterio(row.bitmaskurl,
+                                chunks='auto') as _bitmask:
 
-                _fill_value = _dem.attrs['_FillValue']
-                _dem_crs = _dem.rio.crs.to_epsg()
+                    _fill_value = _dem.attrs['_FillValue']
+                    _dem_crs = _dem.rio.crs.to_epsg()
 
-                _dem_clip = _dem.rio.clip_box(*bounds)
-                _bitmask_clip = _bitmask.rio.clip_box(*bounds)
+                    _dem_clip = _dem.rio.clip_box(*bounds)
+                    _bitmask_clip = _bitmask.rio.clip_box(*bounds)
 
-                # apply bit mask
-                _masked = (xr.where(
-                    (_dem_clip == _fill_value)
-                    | (_bitmask_clip[:, :, :] > 0),
-                    _fill_value,
-                    _dem_clip)
-                           .rename('z')
-                           .squeeze()
-                           .rio.write_crs(_dem_crs)
-                           )
+                    # apply bit mask
+                    _masked = (xr.where(
+                        (_dem_clip == _fill_value)
+                        | (_bitmask_clip[:, :, :] > 0),
+                        _fill_value,
+                        _dem_clip)
+                            .rename('z')
+                            .squeeze()
+                            .rio.write_crs(_dem_crs)
+                            )
 
-                _padded = _masked.rio.pad_box(*bounds,
-                                              constant_values=_fill_value)
-                _padded.rio.write_nodata(_fill_value, inplace=True)
+                    _padded = _masked.rio.pad_box(*bounds,
+                                                constant_values=_fill_value)
+                    _padded.rio.write_nodata(_fill_value, inplace=True)
 
-                attributes = row._asdict()
-                attributes['geom'] = attributes['geom'].wkt
-                _padded.attrs = attributes
+                    attributes = row._asdict()
+                    attributes['geom'] = attributes['geom'].wkt
+                    _padded.attrs = attributes
 
-                _output_fname = f'padded_{row.dem_id}.tif'
-                _output_path = os.path.join(outdir, _output_fname)
-
-                _padded.rio.to_raster(_output_path,
-                                      compute=True)
+                    _padded.rio.to_raster(_output_path,
+                                          compute=True)
                 
 
-    @staticmethod
-    def export_dems(list_of_dems: list):
-        '''
-        download dems from list of lazy clipped/padded bitmasked dems
-        '''
-        dask.compute(*list_of_dems)
+    # @staticmethod
+    # def export_dems(list_of_dems: list):
+    #     '''
+    #     download dems from list of lazy clipped/padded bitmasked dems
+    #     '''
+    #     dask.compute(*list_of_dems)
 
 ######### for coregistration
-
-###### picking reference DEM
-    @staticmethod
-    @dask.delayed
-    def get_lazy_count(filepath: str):
-        '''
-        lazily count all valid pixels in DEM
-        '''
-        with rio.open_rasterio(filepath, chunks='auto') as _dem:
-            _fill_value = _dem.attrs['_FillValue']
-            _total = (_dem != _fill_value).sum().compute()
-            return _total.data.item()
-
-    @staticmethod
-    def get_counts_and_reference(filepaths: list):
-        _lazy_counts = [ArcticDEM.get_lazy_count(f) for f in filepaths]
-        _result = dask.compute(*_lazy_counts)
-        return dict(zip(filepaths, _result))
-
 ###### making masks
 
     @staticmethod
-    @dask.delayed
     def mask_stable_terrain(directory: str,
                             months: list=[7,8]):
         
@@ -225,119 +204,30 @@ class ArcticDEM():
 
             _mask.attrs['ids'] = img_ids
             
-            _delayed_write = _mask.rio.to_raster(os.path.join(directory, 'stable_terrain_mask.tif'),
-                                                compute=True,
-                                                lock=dask.distributed.Lock()
-                                                )
-            return _delayed_write
+            _mask.rio.to_raster(os.path.join(directory,
+                                             'stable_terrain_mask.tif'),
+                                compute=True)
 
+###### picking reference DEM
+    @staticmethod
+    def get_count(filepath: str):
+        '''
+        lazily count all valid pixels in DEM
+        '''
+        with rio.open_rasterio(filepath, chunks='auto') as _dem:
+            _fill_value = _dem.attrs['_FillValue']
+            _total = (_dem != _fill_value).sum().compute()
+            return _total.data.item()
 
     @staticmethod
-    @dask.delayed
-    def make_mask(filepath: str):
-        '''
-        lazily make stable terrain mask for dem
-        inputs:
-            filepath (str) path to DEM
-        '''
-        _dem_id = (os.path.basename(filepath)
-                   .split('padded_')[-1]
-                   .split('.tif')[0])
-        _export_name = f'mask_{_dem_id}.tif'
-
-        # if it already exists stop
-        if os.path.exists(_export_name):
-            pass
-        else:
-            # get bounding box and date of DEM to use
-            # in satellite imagery search
-            with rio.open_rasterio(filepath, chunks='auto') as _dem:
-                _date = pd.to_datetime(_dem.attrs['acqdate1'])
-                _bounds = _dem.rio.bounds()
-                _epsg = _dem.rio.crs.to_epsg()
-                aoi_4326 = utils.misc.shapely_reprojector(
-                    shapely.geometry.box(*_bounds),
-                    src_crs=_epsg,
-                    target_crs=4326
-                )
-            # make date range +/- two weeks
-            d1 = (_date - pd.Timedelta('14d')).strftime('%Y-%m-%d')
-            d2 = (_date + pd.Timedelta('14d')).strftime('%Y-%m-%d')
-            _search_period = f'{d1}/{d2}'
-
-            _catalog = pystac_client.Client.open(
-                "https://planetarycomputer.microsoft.com/api/stac/v1",
-                modifier=pc.sign_inplace
-                )
-            _search = _catalog.search(collections=['sentinel-2-l2a',
-                                                'landsat-c2-l2'],
-                                    intersects=aoi_4326,
-                                    datetime=_search_period)
-
-            _items = _search.item_collection()
-            assert len(_items) > 0, 'did not find any images'
-
-            _least_cloudy_item = min(_items, key=lambda item: eo.ext(item).cloud_cover)
-
-            _asset_dict = {'l':['green','nir08'],
-                           'S':['B03', 'B08']}
-
-            _assets = _asset_dict[_least_cloudy_item.properties['platform'][0]]
-
-            _img = (stackstac.stack(
-                _least_cloudy_item,
-                epsg=3413,
-                assets=_assets
-                ).squeeze()
-                   .rio.clip_box(*aoi_4326.bounds,
-                                 crs=4326)
-                )
-
-            _ndwi = ((_img[0,:,:] - _img[1,:,:]) /
-                     (_img[0,:,:] + _img[1,:,:]))
-
-            with rio.open_rasterio(filepath, chunks='auto') as _ds:
-                _mask = xr.where(_ndwi < 0, 1, 0).rio.reproject_match(_ds)
-
-            _mask.attrs['id'] = _least_cloudy_item.id
-            _mask.attrs['dem_id'] = _dem_id
-
-            _delayed_write = _mask.rio.to_raster(_export_name,
-                                                 compute=True,
-                                                 lock=dask.distributed.Lock(_export_name)
-                                                 )
-            return _delayed_write
-
-    @staticmethod
-    def get_all_masks(filepaths: list):
-        _lazy_output = [ArcticDEM.make_mask(f) for f in filepaths]
-        _ = dask.compute(*_lazy_output)
-
-
+    def get_counts_and_reference(filepaths: list):
+        counts = [ArcticDEM.get_count(f) for f in filepaths]
+        # _lazy_counts = [ArcticDEM.get_lazy_count(f) for f in filepaths]
+        # _result = dask.compute(*_lazy_counts)
+        # return dict(zip(filepaths, _result))
+        return dict(zip(filepaths, counts))
 
 ####### doing the coregistration
-
-    @staticmethod
-    def and_masks(ref_mask_path, to_reg_mask_path):
-
-        with rio.open_rasterio(
-            ref_mask_path,
-            chunks='auto'
-            ) as _ref_mask, rio.open_rasterio(
-                to_reg_mask_path,
-                chunks='auto') as _to_reg_mask:
-
-                _ref_mask_id = _ref_mask.attrs['id']
-                _to_reg_mask_id = _to_reg_mask.attrs['id']
-
-                _mask = ((_ref_mask & _to_reg_mask) == 1).squeeze().compute().data
-
-                if _mask.sum() == 0:
-                    print('no overlapping regions of stable terrain in masks, use reference mask only')
-                    return (_ref_mask == 1).squeeze().compute().data, _ref_mask_id
-                else:
-                    return _mask, ' & '.join([_ref_mask_id, _to_reg_mask_id])
-
 
     @staticmethod
     def copy_reference(reference):
@@ -365,7 +255,6 @@ class ArcticDEM():
                 ref_dem.rio.to_raster(output_name)
 
     @staticmethod
-    @dask.delayed
     def coreg(pair):
         ref_dem_path, to_reg_dem_path = pair
         directory = os.path.dirname(ref_dem_path)
@@ -425,10 +314,13 @@ class ArcticDEM():
             for k, v in _to_reg_attrs.items():
                 new_k = 'to_reg_' + k
                 output.attrs[new_k] = v
+                
+            output.rio.to_raster(output_name,
+                                 compute=True)
             
-            return output.rio.to_raster(output_name,
-                            compute=True,
-                            lock=dask.distributed.Lock(output_name))
+            # return output.rio.to_raster(output_name,
+            #                 compute=True,
+            #                 lock=dask.distributed.Lock(output_name))
 
         except Exception as e:
             print(e)

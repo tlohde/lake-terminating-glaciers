@@ -12,3 +12,4 @@ results/intermediate/velocity/*.tif*
 results/intermediate/velocity/*
 *checkpoints
 *.out
+jobdetails

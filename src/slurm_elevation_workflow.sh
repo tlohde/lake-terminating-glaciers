@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-#SBATCH --ntasks=16
+#SBATCH --ntasks=1
 #SBATCH --mem=32G
 
 source /opt/conda/etc/profile.d/conda.sh
@@ -9,22 +9,30 @@ conda activate /home/s1759665/micromamba/envs/paper2
 # python src/make_dirs.py --centrelines data/streams_v3.geojson
 
 echo "working on: $1"
+
 echo "downloading tiles"
-python src/dem_download_tiles.py --directory $1 --months 4 5 6 7 8 9 10 --buffer 5000
+/usr/bin/time python src/dem_download_tiles.py --directory $1 --months 4 5 6 7 8 9 10 --buffer 5000
+echo "finished downloading"
 
 echo "getting masks"
-python src/dem_get_masks.py --directory $1
+/usr/bin/time python src/dem_get_masks.py --directory $1
+echo "finished getting mask"
 
 echo "coregistering"
-python src/dem_coregister.py --directory $1
+/usr/bin/time python src/dem_coregister.py --directory $1
+echo "finished coregistering"
 
 echo "stacking"
-python src/dem_stacking.py --directory $1
+/usr/bin/time python src/dem_stacking.py --directory $1
+echo "finished stacking"
 
 echo "computing trends"
-python src/dem_trends.py --directory $1
+/usr/bin/time python src/dem_trends.py --directory $1
+echo "finished computing trends"
 
-# echo "tidying up"
+echo "tidying up"
+find $1 -type f -name "padded_*" -delete
+find $1 -type f -name "coregd_*" -delete
 # python src/dem_cleanup.py --directory $1
 
 

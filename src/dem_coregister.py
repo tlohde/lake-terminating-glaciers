@@ -93,4 +93,4 @@ if __name__ == '__main__':
     _ = ArcticDEM.copy_reference(reference)
     
     client.shutdown()
-    client.close()
+    cluster.close()

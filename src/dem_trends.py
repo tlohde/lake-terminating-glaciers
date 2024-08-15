@@ -51,6 +51,7 @@ if __name__ == "__main__":
                              ) as ds:
             
             centreline = ds.attrs['centreline']
+            centreline_type = ds.attrs['lake_land']
             # idx = ((ds['nmad_after'] < ds['nmad_before']) 
             #        & (ds['median_after'] < ds['median_before']))
             
@@ -96,10 +97,11 @@ if __name__ == "__main__":
                 'median_threshold': median_threshold,
                 'nmad_threshold': nmad_threshold,
                 'centreline': centreline,
+                'lake_land': centreline_type
                 }
             
-            trend.rio.write_crs(input_crs=downsampled.rio.crs,
-                                inplace=True)
+            trend = trend.rio.write_crs(input_crs=downsampled.rio.crs,
+                                        grid_mapping_name='spatial_ref')
             
             trend.to_zarr(
                 os.path.join(directory, 'sec.zarr'),

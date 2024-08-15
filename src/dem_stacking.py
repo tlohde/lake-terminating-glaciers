@@ -32,9 +32,10 @@ if __name__ == '__main__':
     # append directory to filepaths
     corgd_dem_files = [os.path.join(directory, f) for f in glob('coregd_*', root_dir=directory)]
     centreline = gpd.read_file(
-        os.path.join(directory, glob('line*.geojson', root_dir=directory)[0])
+        os.path.join(directory, glob('*.geojson', root_dir=directory)[0])
     )
     centreline_wkt = centreline.loc[0, 'geometry'].wkt
+    centreline_type = centreline.loc[0, 'lake_land']
         
 ###########################
 ### helper for handling ###
@@ -168,7 +169,8 @@ if __name__ == '__main__':
     demstack.attrs = {
         'processed by': 'tlohde',
         'processed on': pd.Timestamp.now().strftime('%Y/%m/%d %H:%M'),
-        'centreline': centreline_wkt
+        'centreline': centreline_wkt,
+        'lake_land': centreline_type
     }
 
     demstack.to_zarr(

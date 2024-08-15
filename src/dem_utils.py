@@ -78,7 +78,6 @@ class ArcticDEM():
 
 
     @staticmethod
-    @dask.delayed
     def get_dem(row: pd.core.frame,
                 bounds: tuple,
                 outdir: str):
@@ -136,11 +135,9 @@ class ArcticDEM():
                 _output_fname = f'padded_{row.dem_id}.tif'
                 _output_path = os.path.join(outdir, _output_fname)
 
-                _delayed_write = _padded.rio.to_raster(_output_path,
-                                                       compute=True,
-                                                       lock=dask.distributed.Lock(_output_path))
-
-                return _delayed_write
+                _padded.rio.to_raster(_output_path,
+                                      compute=True)
+                
 
     @staticmethod
     def export_dems(list_of_dems: list):

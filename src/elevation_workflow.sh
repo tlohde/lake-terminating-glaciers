@@ -1,4 +1,4 @@
-h# !/usr/bin/env bash
+#!/usr/bin/env bash
 
 # python src/make_dirs.py --centrelines data/streams_v3.geojson
 

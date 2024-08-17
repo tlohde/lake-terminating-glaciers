@@ -5,6 +5,7 @@ import argparse
 import dask
 from dem_utils import ArcticDEM
 import logging
+import numpy as np
 import os
 
 if __name__ == '__main__':
@@ -41,10 +42,12 @@ if __name__ == '__main__':
 
     # set directory
     assert os.path.isdir(directory), 'path is not a directory. try again'
-
-    lazy_output = ArcticDEM.mask_stable_terrain(directory, months)
-
-    dask.compute(lazy_output)
     
+    with np.errstate(invalid='ignore', divide='ignore'):
+
+        lazy_output = ArcticDEM.mask_stable_terrain(directory, months)
+
+        dask.compute(lazy_output)
+        
     client.shutdown()
     cluster.close()

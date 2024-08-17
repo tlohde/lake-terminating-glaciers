@@ -102,45 +102,49 @@ class ArcticDEM():
 
         to download the lazy object call `dask.compute()`
         '''
-        # lazily open and clip DEM and bitmask COGs to bounds
-        with rio.open_rasterio(row.downloadurl,
-                               chunks='auto') as _dem,\
-            rio.open_rasterio(row.bitmaskurl,
-                              chunks='auto') as _bitmask:
+        
+        _output_fname = f'padded_{row.dem_id}.tif'
+        _output_path = os.path.join(outdir, _output_fname)
+        
+        if os.path.exists(_output_path):
+            pass
+        else:            
+            # lazily open and clip DEM and bitmask COGs to bounds
+            with rio.open_rasterio(row.downloadurl,
+                                chunks='auto') as _dem,\
+                rio.open_rasterio(row.bitmaskurl,
+                                chunks='auto') as _bitmask:
 
-                _fill_value = _dem.attrs['_FillValue']
-                _dem_crs = _dem.rio.crs.to_epsg()
+                    _fill_value = _dem.attrs['_FillValue']
+                    _dem_crs = _dem.rio.crs.to_epsg()
 
-                _dem_clip = _dem.rio.clip_box(*bounds)
-                _bitmask_clip = _bitmask.rio.clip_box(*bounds)
+                    _dem_clip = _dem.rio.clip_box(*bounds)
+                    _bitmask_clip = _bitmask.rio.clip_box(*bounds)
 
-                # apply bit mask
-                _masked = (xr.where(
-                    (_dem_clip == _fill_value)
-                    | (_bitmask_clip[:, :, :] > 0),
-                    _fill_value,
-                    _dem_clip)
-                           .rename('z')
-                           .squeeze()
-                           .rio.write_crs(_dem_crs)
-                           )
+                    # apply bit mask
+                    _masked = (xr.where(
+                        (_dem_clip == _fill_value)
+                        | (_bitmask_clip[:, :, :] > 0),
+                        _fill_value,
+                        _dem_clip)
+                            .rename('z')
+                            .squeeze()
+                            .rio.write_crs(_dem_crs)
+                            )
 
-                _padded = _masked.rio.pad_box(*bounds,
-                                              constant_values=_fill_value)
-                _padded.rio.write_nodata(_fill_value, inplace=True)
+                    _padded = _masked.rio.pad_box(*bounds,
+                                                constant_values=_fill_value)
+                    _padded.rio.write_nodata(_fill_value, inplace=True)
 
-                attributes = row._asdict()
-                attributes['geom'] = attributes['geom'].wkt
-                _padded.attrs = attributes
+                    attributes = row._asdict()
+                    attributes['geom'] = attributes['geom'].wkt
+                    _padded.attrs = attributes
 
-                _output_fname = f'padded_{row.dem_id}.tif'
-                _output_path = os.path.join(outdir, _output_fname)
+                    _delayed_write = _padded.rio.to_raster(_output_path,
+                                                           compute=True,
+                                                           lock=dask.distributed.Lock(_output_path))
 
-                _delayed_write = _padded.rio.to_raster(_output_path,
-                                                       compute=True,
-                                                       lock=dask.distributed.Lock(_output_path))
-
-                return _delayed_write
+                    return _delayed_write
 
     @staticmethod
     def export_dems(list_of_dems: list):
@@ -208,7 +212,7 @@ class ArcticDEM():
             median_ndwi = (
                 (imgstack[:,0,:,:] - imgstack[:,1,:,:]) / 
                 (imgstack[:,0,:,:] + imgstack[:,1,:,:])
-                ).median(dim='time')
+                ).median(dim='time', skipna=True)
             
             # open random DEM for reprojecting mask to same extent
             dem_file = glob('padded_*', root_dir=directory)

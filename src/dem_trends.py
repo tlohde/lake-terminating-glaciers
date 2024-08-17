@@ -11,6 +11,7 @@ import os
 import dask.distributed
 import logging
 import pandas as pd
+import numpy as np
 import utils
 import warnings
 import xarray as xr
@@ -46,22 +47,25 @@ if __name__ == "__main__":
     file = os.path.join(directory, files[0])
 
     with warnings.catch_warnings(action='ignore'):
-        with xr.open_dataset(file,
-                             engine='zarr', 
-                             ) as ds:
+        with xr.open_zarr(file) as ds:
             
             centreline = ds.attrs['centreline']
             centreline_type = ds.attrs['lake_land']
             # idx = ((ds['nmad_after'] < ds['nmad_before']) 
             #        & (ds['median_after'] < ds['median_before']))
             
-            idx = ((ds['nmad_after'] < nmad_threshold) 
-                   & (ds['median_after'] < median_threshold))
+            idx = ((ds['nmad_after'] < nmad_threshold)
+                   & (np.abs(ds['median_after']) < median_threshold))
             
-            print(f'using {idx.sum().item()} out of possible {len(ds.time)} DEMs')
+            print(f'using {idx.sum().compute().item()} out of possible {len(ds.time)} DEMs')
             
-            dem = ds['z'].sel(time=idx).chunk(chunks={'y': len(ds.y) // 4,
-                                                     'x': len(ds.x) // 4})
+            dem = (ds['z']
+                   .sel(time=idx)
+                   .chunk(chunks={'time':-1,
+                                  'y': len(ds.y) // 4,
+                                  'x': len(ds.x) // 4})
+            )
+            print(f'dem chunks: {dem.chunksizes}')
             
             _timestamps = pd.to_datetime(
                 dem['time'].data
@@ -73,9 +77,12 @@ if __name__ == "__main__":
             
             downsampled = downsampled.chunk(
                 {'time': -1,
-                 'y': 'auto',
-                 'x': 'auto'}
+                #  'y': len(downsampled.y) // 4,
+                #  'x': len(downsampled.x) // 4
+                 }
                 )
+            
+            print(f'downsampled chunk sizes: {downsampled.chunksizes}')
             
             n = downsampled.count(dim='time').rename('n')
                         
@@ -92,8 +99,8 @@ if __name__ == "__main__":
                 high_slope and low_slope are the 0.95 confidence interval
                 ''',
                 'timestamps': _timestamps,
-                'dem_ids': ds['to_reg_dem_id'].sel(time=idx).data.tolist(),
-                'reference_dem': list(set(ds['ref_dem_id'].data.tolist()))[0],
+                'dem_ids': ds['to_reg_dem_id'].sel(time=idx).compute().data.tolist(),
+                'reference_dem': list(set(ds['ref_dem_id'].compute().data.tolist()))[0],
                 'median_threshold': median_threshold,
                 'nmad_threshold': nmad_threshold,
                 'centreline': centreline,

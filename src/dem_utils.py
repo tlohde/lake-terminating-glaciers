@@ -469,7 +469,7 @@ class ArcticDEM():
                           geom=False,
                           var=False):
         '''
-        reads in .zarr from file path
+        reads in from file path
         (i.e. the output of `dem_trends.py`, or output of `dem_stacking.py`)
         
         takes the centreline stored in .attrs['centreline']
@@ -490,7 +490,14 @@ class ArcticDEM():
         '''
         
         assert(os.path.isdir(fp)), 'invalid path'
-        with xr.open_dataset(fp, engine='zarr') as ds:
+        if '.zarr' in fp:
+            openfunc = xr.open_zarr
+        elif '.nc' in fp:
+            openfunc = xr.open_dataset
+        elif '.tif' in fp:
+            openfunc = rio.open_rasterio
+            
+        with openfunc(fp) as ds:
             
             if geom:
                 centreline = geom

@@ -20,7 +20,10 @@ import xarray as xr
 if __name__ == "__main__":
 
     _starttime = pd.Timestamp.now()    
-    cluster = dask.distributed.LocalCluster(silence_logs=logging.ERROR)
+    cluster = dask.distributed.LocalCluster(n_workers=4,
+                                            threads_per_worker=2,
+                                            memory_limit='8G',
+                                            silence_logs=logging.ERROR)
     client = cluster.get_client()
 
     # set directory
@@ -117,6 +120,8 @@ if __name__ == "__main__":
                 mode='w',
                 compute=True,
                 )
+            
+            ds.close()
 
     _endtime = pd.Timestamp.now()
     # print(f'operation took: {_endtime - _starttime}')

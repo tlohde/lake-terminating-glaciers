@@ -13,7 +13,10 @@ import xarray as xr
 
 if __name__ == '__main__':
     
-    cluster = dask.distributed.LocalCluster(silence_logs=logging.ERROR)
+    cluster = dask.distributed.LocalCluster(n_workers=4,
+                                            threads_per_worker=2,
+                                            memory_limit='8G',
+                                            silence_logs=logging.ERROR)
     client = cluster.get_client()
 
     parser = argparse.ArgumentParser(
@@ -109,6 +112,8 @@ if __name__ == '__main__':
             meta_ds = make_attr_xrda([ds.attrs])
             
             merged.append(xr.merge([ds, meta_ds.to_xarray()]))
+            
+            ds.close()
 
     #########################
     ###### stacking dems ####

@@ -1,28 +1,32 @@
 #!/usr/bin/env bash
 
-#SBATCH --ntasks=16
+#SBATCH --ntasks=8
 #SBATCH --mem=32G
 
 source /opt/conda/etc/profile.d/conda.sh
 conda activate /home/s1759665/micromamba/envs/paper2
 # python src/make_dirs.py --centrelines data/streams_v3.geojson
 
-echo "working on: $1"
-echo "downloading tiles"
+printf "\nworking on: $1\n"
+printf "\ndownloading tiles\n"
 python src/dem_download_tiles.py --directory $1 --months 4 5 6 7 8 9 10 --buffer 5000
 
-echo "getting masks"
+printf "\ngetting masks\n"
 python src/dem_get_masks.py --directory $1
 
-echo "coregistering"
+printf "\ncoregistering\n"
 python src/dem_coregister.py --directory $1
 
-echo "stacking"
+printf "\nstacking\n"
 python src/dem_stacking.py --directory $1
 
-echo "computing trends"
+printf "\ncomputing trends\n"
 python src/dem_trends.py --directory $1
 
+printf "\nsampling and exprting dataframe\n"
+python src/dem_make_sec_df.py --directory $1
+
+printf "\nall done\n"
 # echo "tidying up"
 # python src/dem_cleanup.py --directory $1
 

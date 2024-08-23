@@ -27,8 +27,10 @@ from tqdm import tqdm
 if __name__ == '__main__':
     
     # initiate dask cluster
-    cluster = dask.distributed.LocalCluster(
-        silence_logs=logging.ERROR)
+    cluster = dask.distributed.LocalCluster(n_workers=4,
+                                            threads_per_worker=2,
+                                            memory_limit='8G',
+                                            silence_logs=logging.ERROR)
     client = cluster.get_client()
 
     # parse args

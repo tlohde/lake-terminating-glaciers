@@ -84,7 +84,10 @@ if __name__ == '__main__':
     # start dask cluster
     # lazily apply `get_dem` for bitmasking, clipping, padding, and downloading 
     # each DEMs in filtered catalog
-    cluster = dask.distributed.LocalCluster(silence_logs=logging.ERROR)
+    cluster = dask.distributed.LocalCluster(n_workers=4,
+                                            threads_per_worker=2,
+                                            memory_limit='8G',
+                                            silence_logs=logging.ERROR)
     client = cluster.get_client()
         
     lazy_download = [ArcticDEM.get_dem(row,

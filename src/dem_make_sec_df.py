@@ -45,9 +45,9 @@ if __name__ == "__main__":
                 for i in range(len(ds[coords]))], compat='override').drop_vars(coords)]
                         )
 
-    def add_geom_mask(geom, buffer, ds):
+    def add_geom_mask(geom, ds, buffer=200):
         # buffer geometry, with square ends
-        buff_geom = geom.buffer(200, cap_style=3)
+        buff_geom = geom.buffer(buffer, cap_style=2)
         
         # empty array of same x, y dim shape as merged
         arr = np.zeros((ds.sizes['y'], ds.sizes['x']))
@@ -67,19 +67,20 @@ if __name__ == "__main__":
         return merged
 
 
-    def get_summary_df(site):
-        id = os.path.basename(site).split('_')[0][2:]
+    def get_summary_df(directory):
+        id = os.path.basename(directory).split('_')[0][2:]
         
-        cl_path = os.path.join(site, glob('*.geojson', root_dir=site)[0])
+        cl_path = os.path.join(directory, glob('*.geojson', root_dir=directory)[0])
         cl = gpd.read_file(cl_path)
         where = cl.loc[0, 'where']
         lake_land = cl.loc[0, 'lake_land']
         
-        sec_path = os.path.join(site, 'sec.zarr')
-        dem_path = os.path.join(site, 'stacked_coregd.zarr')
-        mask_path = os.path.join(site, 'stable_terrain_mask.tif')
+        sec_path = os.path.join(directory, 'sec.zarr')
+        dem_path = os.path.join(directory, 'stacked_coregd.zarr')
+        mask_path = os.path.join(directory, 'stable_terrain_mask.tif')
         
         _sec = xr.open_zarr(sec_path)
+        _sec = _sec.assign_coords({'spatial_ref': _sec['spatial_ref']})
         _sec = demote_coords_to_vars(_sec, 'result', 'sec')
         
         with xr.open_zarr(dem_path) as _dem:
@@ -106,7 +107,7 @@ if __name__ == "__main__":
         merged = xr.merge([_dem_median, _sec, mask_rprj],
                         compat='override').compute()
         
-        merged = add_geom_mask(cl.loc[0,'geometry'], 200, merged)
+        merged = add_geom_mask(cl.loc[0,'geometry'], ds=merged, buffer=200)
             
         ## take logical and of NOT stable terrain and centreline masks,
         cl_mask = ((merged['mask'] != 1) & (merged['buffer_aoi'] == 1))
@@ -126,7 +127,7 @@ if __name__ == "__main__":
         df['id'] = id
         df['lake_land'] = lake_land
 
-        outpath = os.path.join(directory, 'elevation_sample.parquet')
+        outpath = os.path.join(directory, 'sec_sample.parquet')
         print(f'exporting to {outpath}')
         # return df, outpath
         da.to_parquet(df=df, path=outpath, compute=True)

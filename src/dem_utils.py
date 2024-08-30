@@ -157,7 +157,6 @@ class ArcticDEM():
 
 ###### picking reference DEM
     @staticmethod
-    @dask.delayed
     def get_lazy_count(filepath: str):
         '''
         lazily count all valid pixels in DEM
@@ -169,8 +168,7 @@ class ArcticDEM():
 
     @staticmethod
     def get_counts_and_reference(filepaths: list):
-        _lazy_counts = [ArcticDEM.get_lazy_count(f) for f in filepaths]
-        _result = dask.compute(*_lazy_counts)
+        _result = [ArcticDEM.get_lazy_count(f) for f in filepaths]
         return dict(zip(filepaths, _result))
 
 ###### making masks
@@ -239,112 +237,7 @@ class ArcticDEM():
             return _delayed_write
 
 
-    @staticmethod
-    @dask.delayed
-    def make_mask(filepath: str):
-        '''
-        lazily make stable terrain mask for dem
-        inputs:
-            filepath (str) path to DEM
-        '''
-        _dem_id = (os.path.basename(filepath)
-                   .split('padded_')[-1]
-                   .split('.tif')[0])
-        _export_name = f'mask_{_dem_id}.tif'
-
-        # if it already exists stop
-        if os.path.exists(_export_name):
-            pass
-        else:
-            # get bounding box and date of DEM to use
-            # in satellite imagery search
-            with rio.open_rasterio(filepath, chunks='auto') as _dem:
-                _date = pd.to_datetime(_dem.attrs['acqdate1'])
-                _bounds = _dem.rio.bounds()
-                _epsg = _dem.rio.crs.to_epsg()
-                aoi_4326 = utils.misc.shapely_reprojector(
-                    shapely.geometry.box(*_bounds),
-                    src_crs=_epsg,
-                    target_crs=4326
-                )
-            # make date range +/- two weeks
-            d1 = (_date - pd.Timedelta('14d')).strftime('%Y-%m-%d')
-            d2 = (_date + pd.Timedelta('14d')).strftime('%Y-%m-%d')
-            _search_period = f'{d1}/{d2}'
-
-            _catalog = pystac_client.Client.open(
-                "https://planetarycomputer.microsoft.com/api/stac/v1",
-                modifier=pc.sign_inplace
-                )
-            _search = _catalog.search(collections=['sentinel-2-l2a',
-                                                'landsat-c2-l2'],
-                                    intersects=aoi_4326,
-                                    datetime=_search_period)
-
-            _items = _search.item_collection()
-            assert len(_items) > 0, 'did not find any images'
-
-            _least_cloudy_item = min(_items, key=lambda item: eo.ext(item).cloud_cover)
-
-            _asset_dict = {'l':['green','nir08'],
-                           'S':['B03', 'B08']}
-
-            _assets = _asset_dict[_least_cloudy_item.properties['platform'][0]]
-
-            _img = (stackstac.stack(
-                _least_cloudy_item,
-                epsg=3413,
-                assets=_assets
-                ).squeeze()
-                   .rio.clip_box(*aoi_4326.bounds,
-                                 crs=4326)
-                )
-
-            _ndwi = ((_img[0,:,:] - _img[1,:,:]) /
-                     (_img[0,:,:] + _img[1,:,:]))
-
-            with rio.open_rasterio(filepath, chunks='auto') as _ds:
-                _mask = xr.where(_ndwi < 0, 1, 0).rio.reproject_match(_ds)
-
-            _mask.attrs['id'] = _least_cloudy_item.id
-            _mask.attrs['dem_id'] = _dem_id
-
-            _delayed_write = _mask.rio.to_raster(_export_name,
-                                                 compute=True,
-                                                 lock=dask.distributed.Lock(_export_name)
-                                                 )
-            return _delayed_write
-
-    @staticmethod
-    def get_all_masks(filepaths: list):
-        _lazy_output = [ArcticDEM.make_mask(f) for f in filepaths]
-        _ = dask.compute(*_lazy_output)
-
-
-
 ####### doing the coregistration
-
-    @staticmethod
-    def and_masks(ref_mask_path, to_reg_mask_path):
-
-        with rio.open_rasterio(
-            ref_mask_path,
-            chunks='auto'
-            ) as _ref_mask, rio.open_rasterio(
-                to_reg_mask_path,
-                chunks='auto') as _to_reg_mask:
-
-                _ref_mask_id = _ref_mask.attrs['id']
-                _to_reg_mask_id = _to_reg_mask.attrs['id']
-
-                _mask = ((_ref_mask & _to_reg_mask) == 1).squeeze().compute().data
-
-                if _mask.sum() == 0:
-                    print('no overlapping regions of stable terrain in masks, use reference mask only')
-                    return (_ref_mask == 1).squeeze().compute().data, _ref_mask_id
-                else:
-                    return _mask, ' & '.join([_ref_mask_id, _to_reg_mask_id])
-
 
     @staticmethod
     def copy_reference(reference):
@@ -372,7 +265,6 @@ class ArcticDEM():
                 ref_dem.rio.to_raster(output_name)
 
     @staticmethod
-    @dask.delayed
     def coreg(pair):
         ref_dem_path, to_reg_dem_path = pair
         directory = os.path.dirname(ref_dem_path)
@@ -382,7 +274,7 @@ class ArcticDEM():
         
         output_name = to_reg_dem_path.replace('padded', 'coregd')
         if os.path.exists(output_name):
-            print(f'already done: {output_name}\nexiting...')
+            print(f'already done: {output_name}\n')
             return None
 
         with rio.open_rasterio(ref_dem_path, chunks='auto') as _dem:
@@ -435,7 +327,7 @@ class ArcticDEM():
             
             return output.rio.to_raster(output_name,
                             compute=True,
-                            lock=dask.distributed.Lock(output_name))
+                            )
 
         except Exception as e:
             print(e)

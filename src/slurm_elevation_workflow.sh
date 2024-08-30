@@ -8,11 +8,11 @@ conda activate /home/s1759665/micromamba/envs/paper2
 # python src/make_dirs.py --centrelines data/streams_v3.geojson
 
 printf "\nworking on: $1\n"
-printf "\ndownloading tiles\n"
-python src/dem_download_tiles.py --directory $1 --months 4 5 6 7 8 9 10 --buffer 5000
+# printf "\ndownloading tiles\n"
+# python src/dem_download_tiles.py --directory $1 --months 4 5 6 7 8 9 10 --buffer 5000
 
-printf "\ngetting masks\n"
-python src/dem_get_masks.py --directory $1
+# printf "\ngetting masks\n"
+# python src/dem_get_masks.py --directory $1
 
 printf "\ncoregistering\n"
 python src/dem_coregister.py --directory $1
@@ -23,8 +23,8 @@ python src/dem_stacking.py --directory $1
 printf "\ncomputing trends\n"
 python src/dem_trends.py --directory $1
 
-printf "\nsampling and exprting dataframe\n"
-python src/dem_make_sec_df.py --directory $1
+# printf "\nsampling and exprting dataframe\n"
+# python src/dem_make_sec_df.py --directory $1
 
 printf "\nall done\n"
 # echo "tidying up"

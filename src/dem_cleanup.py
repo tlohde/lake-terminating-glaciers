@@ -1,3 +1,7 @@
+"""
+takes input directory (`--directory`) and removes all 
+.tif files that *aren't* `stable_terrain_mask.tif`
+"""
 import argparse
 from glob import glob
 import os

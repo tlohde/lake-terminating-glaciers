@@ -1,4 +1,6 @@
-
+"""
+makes a surface elevatino change dataframe
+"""
 import argparse
 import dask.delayed
 import geopandas as gpd
@@ -85,13 +87,14 @@ if __name__ == "__main__":
         
         with xr.open_zarr(dem_path) as _dem:
             _dem_median = _dem['z'].median(dim='time',
-                                        skipna=True).compute()
+                                           skipna=True).compute()
             _dem.close()
         
-        _dem_median = _dem_median.rio.reproject_match(_sec,
-                                                resampling=Resampling.bilinear,
-                                                nodata=np.nan).rename('z_median')
-        
+        _dem_median = (_dem_median
+                       .rio.reproject_match(_sec,
+                                            resampling=Resampling.bilinear,
+                                            nodata=np.nan).rename('z_median')
+        )
         
         # _dem_median = reproject_like(_dem_median, _sec).rename('z_median').compute()
                     

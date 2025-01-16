@@ -15,7 +15,7 @@ import geopandas as gpd
 from tqdm import tqdm
 # import imagery
 # import utils
-import velocity_helpers
+import velocity_utils
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--centrelines')
@@ -71,7 +71,7 @@ if __name__ == "__main__":
     for row in tqdm(lines.sample(1).itertuples()):
         print(f'working on #{row.Index}')
         try:
-            V[row.Index] = velocity_helpers.CentreLiner(
+            V[row.Index] = velocity_utils.CentreLiner(
                 geo=row.geometry,
                 buff_dist=buff,
                 index=row.Index,

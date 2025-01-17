@@ -33,7 +33,6 @@ parser.add_argument('--mad',
                     type=int)
 parser.add_argument('--filter_cube',
                     action=argparse.BooleanOptionalAction)
-
 parser.add_argument('--sample_centreline',
                     action=argparse.BooleanOptionalAction)
 parser.add_argument('--get_robust_trend',
@@ -68,7 +67,7 @@ if __name__ == "__main__":
     # iterate through centrelines, and get velocity cube
     V = {}
     failed = []
-    for row in tqdm(lines.sample(1).itertuples()):
+    for row in tqdm(lines.itertuples()):
         print(f'working on #{row.Index}')
         try:
             V[row.Index] = velocity_utils.CentreLiner(

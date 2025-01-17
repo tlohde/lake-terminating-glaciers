@@ -1,20 +1,7 @@
 import argparse
 from dask.distributed import Client
-# import pandas as pd
-# import itslive
 import geopandas as gpd
-# from shapely.geometry import Polygon
-# from shapely import box
-# import matplotlib.pyplot as plt
-# from matplotlib.collections import LineCollection
-# from matplotlib.dates import date2num, DateFormatter, YearLocator
-# import seaborn as sns
-# import xrspatial as xrs
-# import numpy as np
-# import xarray as xr
 from tqdm import tqdm
-# import imagery
-# import utils
 import velocity_utils
 
 parser = argparse.ArgumentParser()
@@ -58,7 +45,7 @@ get_rgb = args.get_rgb
 
 # read in centrelines
 lines = gpd.read_file(f)
-
+print(lines)
 # set dask cluster running
 if __name__ == "__main__":
     client = Client()

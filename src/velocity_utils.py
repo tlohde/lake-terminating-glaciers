@@ -30,26 +30,6 @@ import utils
 class Tools():
 
     @staticmethod
-    def filter_ddt(ds_df, ddt_range):
-        '''
-        convenience method for filtering itslive xr.Dataset(DataArray)
-        by 'date_dt' along mid_date dimension
-        ds_df: xr.Dataset / DataArray OR pandas dataframe
-        ddt_range: tuble of pandas timedelta strings (e.g. '330d') for setting
-        upper and lower range of filter values
-        returns tuple (filtered dataset, and index for safe keeping)
-        '''
-        lower, upper = [pd.Timedelta(dt) for dt in ddt_range]
-        idx = ((ds_df['date_dt'] >= lower) & (ds_df['date_dt'] < upper))
-        if isinstance(ds_df, (xr.core.dataset.Dataset,
-                              xr.core.dataarray.DataArray)):
-            return ds_df.sel(mid_date=(idx)), idx
-        if isinstance(ds_df, pd.core.frame.DataFrame):
-            return ds_df[idx], idx
-
-
-        
-    @staticmethod
     def filter(ds_df, var, range, axis):
         '''
         convenience method for filtering itslive xr.Dataset(DataArray)
@@ -69,6 +49,11 @@ class Tools():
     
     @staticmethod
     def filter_middate_datedt(ds, middate_range, ddt_range):
+        '''
+        wraps the above `filter()` for when you want to filter either
+        by middate or ddt, or both, or neither
+        returns index
+        '''
         idxs = []
         if middate_range:
             middate_idx = Tools.filter(ds, 'mid_date', middate_range, 'mid_date')
@@ -87,7 +72,10 @@ class Tools():
         
 
     @staticmethod
-    def filter_mad(ds_df, var, axis=None, n=5):
+    def filter_mad(ds_df,
+                   var,
+                   axis=None,
+                   n=5):
         '''
         for filtering / removing outliers
         values that are `n` * median absolute deviation (mad)
@@ -132,9 +120,9 @@ class Tools():
             return ds_df.where(modified_z < n)
 
     @staticmethod
-    # this will need updating!
+    # think this is fine now
     # currently onlu used in Plotters()
-    def filter_line_df(self, ddt_range, **kwargs):
+    def filter_line_df(self, middate_range, ddt_range, **kwargs):
         '''
         bundles both filter_ddt with filter_mad
         for a given distance along centreline
@@ -145,8 +133,13 @@ class Tools():
         and uses that
         returns filtered dataframe. that will contain nans
         '''
-        _df, _ = Tools.filter_ddt(self.line_df,
-                                  ddt_range)
+        
+        idx = Tools.filter_middate_datedt(self.line_df,
+                                          middate_range=middate_range,
+                                          ddt_range=ddt_range
+                                          )
+        
+        _df = self.line_df[idx]
 
         _var = kwargs.get('var', 'v')
         _vals = kwargs.get('vals', None)
@@ -203,7 +196,7 @@ class CentreLiner():
                  geo,
                  buff_dist,
                  index,
-                 mad_filter=False,
+                 filter=False,
                  get_robust_trend=False,
                  get_annual_median=False,
                  sample_centreline=False,
@@ -244,16 +237,23 @@ class CentreLiner():
 
         
         # default kwargs for filtering cube
-        # only used if mad_filter=True
-        self.ddt_range = kwargs.get('ddt_range', ('335d', '395d'))
+        # only used if filter=True
+        self.ddt_range = kwargs.get('ddt_range',
+                                    ('335d', '395d'))
+        
+        self.middate_range = kwargs.get('middate_range',
+                                        self.get_mid_date_range(self))
+        
         self.n = kwargs.get('n', 5)
         
 
-        if mad_filter:
-            print(f'filtering velocity cube:\
-                ddt:{self.ddt_range}\
-                    mad: {self.n}')
-            self.filter_v_components(ddt_range=self.ddt_range,
+        if filter:
+            print(f'filtering velocity cube:'
+                  f'mid_dates:\t{self.middate_range}\n'
+                  f'ddt:\t{self.ddt_range}\n'
+                  f'mad:\t{self.n}')
+            self.filter_v_components(middate_range=self.middate_range,
+                                     ddt_range=self.ddt_range,
                                      n=self.n)
 
         if get_robust_trend:
@@ -307,10 +307,10 @@ class CentreLiner():
         max_dates = np.asarray([ds.mid_date.max().values for ds in self.dss])
         min_date = min_dates.min()
         max_date = max_dates.max()
-        self.midDate_range = (min_date, max_date)
+        self.middate_range = (min_date, max_date)
 
-    def get_year_counts(self):
-        _counts_per_year = [ds.mid_date.groupby('mid_date.year').count() for ds in self.dss]
+    def get_year_counts(list_of_ds):
+        _counts_per_year = [ds.mid_date.groupby('mid_date.year').count() for ds in list_of_ds]
         _years = set(itertools.chain.from_iterable([ds.year.values for ds in _counts_per_year]))
         count_dict = {}
         for _y in _years:
@@ -318,8 +318,7 @@ class CentreLiner():
             for ds in _counts_per_year:
                 vals += ds.sel(year=_y).values.item(),
             count_dict[_y] = vals
-        self.year_counts = count_dict
-            
+        return count_dict   
 
     def filter_v_components(self,
                             middate_range=False,
@@ -372,29 +371,38 @@ class CentreLiner():
                               export=False):
         _trends = []
         for ds in self.dss:
-            
+            _list_of_filtered_dss = []
+            # filter on date_dt and mid_date
             _f_idx = Tools.filter_middate_datedt(ds,
                                                  middate_range,
                                                  ddt_range)
             
             _filtered_ds = ds.sel(mid_date=_f_idx)
+            _list_of_filtered_dss.append(_filtered_ds)
+            # compute trend
             _trends.append(
                 (utils.Trends.make_robust_trend(_filtered_ds[_var])
                  .rename(f'{_var}_trend'))
                 )
         self.robust_trend = xr.merge(_trends)
         
+        year_counts = get_year_counts(_list_of_filtered_dss)
+        
+        # add some meta data        
         _now = pd.Timestamp.now().strftime('%y%m%d_%H%M')
         print(f'trends lazily computed, adding metadata: {_now}')
 
         self.robust_trend['v_trend'].attrs = {
             'crs': 3413,
             'buffer': self.buff_dist,
+            'middate_range': middate_range,
             'ddt_range': ddt_range,
+            'year_counts': year_counts,
             'date_processed': _now,
             'centreline': self.tidy_stream.wkt,
             'centreline_id': self.index
         }
+        
         if export:
             _path = 'results/intermediate/velocity/robust_annual_trends/'
             _file = f'id{self.index}_{_now}.zarr'

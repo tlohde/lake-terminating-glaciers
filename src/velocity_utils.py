@@ -312,7 +312,7 @@ class CentreLiner():
         if export:
             _path = 'results/intermediate/velocity/robust_annual_trends/'
             _file = f'id{self.index}_{_now}.zarr'
-            print(f'now exporting and computing trend output\n{_path}/{_file}')
+            print(f'now exporting and computing trend output\n{_path}{_file}')
             (self.robust_trend['v_trend']
              .chunk(dict(zip(self.robust_trend['v_trend'].dims,
                              self.robust_trend['v_trend'].shape)))
@@ -324,7 +324,7 @@ class CentreLiner():
         _now = self.robust_trend['v_trend'].attrs['date_processed']
         _path = 'results/intermediate/velocity/robust_annual_trends/'
         _file = f'id{self.index}_{_now}.zarr'
-        print(f'now exporting and computing trend output\n{_path}/{_file}')
+        print(f'now exporting and computing trend output\n{_path}{_file}')
         (self.robust_trend['v_trend']
          .chunk(dict(zip(self.robust_trend['v_trend'].dims,
                          self.robust_trend['v_trend'].shape)))

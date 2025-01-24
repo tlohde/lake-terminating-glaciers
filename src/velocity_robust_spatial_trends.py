@@ -73,7 +73,7 @@ if __name__ == "__main__":
     already_done = [int(id) for id in already_done]
     
     if idx != -9999:
-        lines = lines.loc[idx]
+        lines = lines.loc[[idx]]
         
     print(f'there are now {len(lines)} in centrelines')
     

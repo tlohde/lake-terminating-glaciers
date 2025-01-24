@@ -10,5 +10,4 @@ printf "\nworking on: $1\n"
 
 python src/velocity_robust_spatial_trends.py \
 --centrelines data/streams_v3.geojson \
---index $1 \
 --get_robust_trend --export_trend

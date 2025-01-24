@@ -9,6 +9,7 @@ import dask.delayed
 import pandas as pd
 import imagery
 from functools import partial
+import itertools
 import itslive
 import geopandas as gpd
 import numpy as np
@@ -34,7 +35,7 @@ class Tools():
         convenience method for filtering itslive xr.Dataset(DataArray)
         by 'date_dt' along mid_date dimension
         ds_df: xr.Dataset / DataArray OR pandas dataframe
-        ddt_range: tuble of pandas timestrings for setting
+        ddt_range: tuble of pandas timedelta strings (e.g. '330d') for setting
         upper and lower range of filter values
         returns tuple (filtered dataset, and index for safe keeping)
         '''
@@ -45,6 +46,45 @@ class Tools():
             return ds_df.sel(mid_date=(idx)), idx
         if isinstance(ds_df, pd.core.frame.DataFrame):
             return ds_df[idx], idx
+
+
+        
+    @staticmethod
+    def filter(ds_df, var, range, axis):
+        '''
+        convenience method for filtering itslive xr.Dataset(DataArray)
+        by 'var' along 'axis' where 'var' is within range (tuple)
+        ds_df: xr.Dataset / DataArray OR pandas dataframe
+        ddt_range: tuble of datestrings ('yyyy/mm/dd') for setting
+        upper and lower range of filter values
+        returns index
+        '''
+        lower, upper = range
+        idx = ((ds_df[var] >= lower) & (ds_df[var] < upper))
+        if isinstance(ds_df, (xr.core.dataset.Dataset,
+                              xr.core.dataarray.DataArray)):
+            return ds_df.sel({axis:idx}), idx
+        if isinstance(ds_df, pd.core.frame.DataFrame):
+            return idx
+    
+    @staticmethod
+    def filter_middate_datedt(ds, middate_range, ddt_range):
+        idxs = []
+        if middate_range:
+            middate_idx = Tools.filter(ds, 'mid_date', middate_range, 'mid_date')
+            idxs.append(middate_idx)
+            
+        if ddt_range:
+            ddt_idx = Tools.filter(ds, 'date_dt', ddt_range, 'mid_date')
+            idxs.append(ddt_idx)
+        
+        if len(idxs) == 1:
+            return idxs[0]
+        elif len(idxs) > 1:
+            return np.logical_and(*idxs)
+        else:
+            return [True] * len(ds.mid_date)
+        
 
     @staticmethod
     def filter_mad(ds_df, var, axis=None, n=5):
@@ -92,6 +132,8 @@ class Tools():
             return ds_df.where(modified_z < n)
 
     @staticmethod
+    # this will need updating!
+    # currently onlu used in Plotters()
     def filter_line_df(self, ddt_range, **kwargs):
         '''
         bundles both filter_ddt with filter_mad
@@ -161,7 +203,7 @@ class CentreLiner():
                  geo,
                  buff_dist,
                  index,
-                 filter_cube=False,
+                 mad_filter=False,
                  get_robust_trend=False,
                  get_annual_median=False,
                  sample_centreline=False,
@@ -200,12 +242,14 @@ class CentreLiner():
         # resolution (in m) of velocity dataset
         self.res = np.mean(np.abs(self.dss[0].rio.resolution()))
 
+        
         # default kwargs for filtering cube
-        # only used if filter_cube=True
+        # only used if mad_filter=True
         self.ddt_range = kwargs.get('ddt_range', ('335d', '395d'))
         self.n = kwargs.get('n', 5)
+        
 
-        if filter_cube:
+        if mad_filter:
             print(f'filtering velocity cube:\
                 ddt:{self.ddt_range}\
                     mad: {self.n}')
@@ -258,11 +302,34 @@ class CentreLiner():
             )
             self.dss.append(_ds)
 
-    def filter_v_components(self, ddt_range, n):
+    def get_mid_date_range(self):
+        min_dates = np.asarray([ds.mid_date.min().values for ds in self.dss])
+        max_dates = np.asarray([ds.mid_date.max().values for ds in self.dss])
+        min_date = min_dates.min()
+        max_date = max_dates.max()
+        self.midDate_range = (min_date, max_date)
+
+    def get_year_counts(self):
+        _counts_per_year = [ds.mid_date.groupby('mid_date.year').count() for ds in self.dss]
+        _years = set(itertools.chain.from_iterable([ds.year.values for ds in _counts_per_year]))
+        count_dict = {}
+        for _y in _years:
+            vals = ()
+            for ds in _counts_per_year:
+                vals += ds.sel(year=_y).values.item(),
+            count_dict[_y] = vals
+        self.year_counts = count_dict
+            
+
+    def filter_v_components(self,
+                            middate_range=False,
+                            ddt_range=False,
+                            n=False):
         '''
         filter velocity cubes along time dimension
-        by first filtering by date_dt with ddt_range
-        then replacing outlier values with nan. where
+        if `middate_range` is supplied, filter by mid_date.
+        if `ddt_range` is supplied, filter by ddt_range
+        if `n` is supplied replace outlier values with nan. where
         outliers are based on those that are `n`
         median absolute deviations from the median.
         MAD filtering done independently on x and y compnents
@@ -278,22 +345,41 @@ class CentreLiner():
         self.filtered_v = []
         self.filtered_v_idx = []
         for _ds in self.dss:
-            _f_ddt, _f_ddt_idx = Tools.filter_ddt(_ds, ddt_range)
-            _vx = Tools.filter_mad(_f_ddt, 'vx', 'mid_date', n)
-            _vy = Tools.filter_mad(_f_ddt, 'vy', 'mid_date', n)
-            _v = np.hypot(_vx, _vy).rename('v')
-            self.filtered_v.append(
-                xr.Dataset(data_vars=dict(zip(['vx', 'vy', 'v'],
-                                              [_vx, _vy, _v])))
-                )
-            self.filtered_v_idx.append(_f_ddt_idx)
+            idxs = []
+            
+            _f_idx = Tools.filter_middate_datedt(_ds,
+                                                 middate_range,
+                                                 ddt_range)
+            if n:            
+                _vx = Tools.filter_mad(_ds.sel(mid_date=_f_idx), 'vx', 'mid_date', n)
+                _vy = Tools.filter_mad(_ds.sel(mid_date=_f_idx), 'vy', 'mid_date', n)
+                _v = np.hypot(_vx, _vy).rename('v')
+                self.filtered_v.append(
+                    xr.Dataset(data_vars=dict(zip(['vx', 'vy', 'v'],
+                                                  [_vx, _vy, _v])))
+                    )
+            else:
+                self.filtered_v.append(
+                    _ds.sel(mid_date=_f_idx)
+                )    
+            
+            self.filtered_v_idx.append(_f_idx)
 
-    def robust_spatial_trends(self, ddt_range, _var='v', export=False):
+    def robust_spatial_trends(self,
+                              middate_range=False,
+                              ddt_range=False,
+                              _var='v',
+                              export=False):
         _trends = []
         for ds in self.dss:
-            _ddt_filtered, _ = Tools.filter_ddt(ds, ddt_range)
+            
+            _f_idx = Tools.filter_middate_datedt(ds,
+                                                 middate_range,
+                                                 ddt_range)
+            
+            _filtered_ds = ds.sel(mid_date=_f_idx)
             _trends.append(
-                (utils.Trends.make_robust_trend(_ddt_filtered[_var])
+                (utils.Trends.make_robust_trend(_filtered_ds[_var])
                  .rename(f'{_var}_trend'))
                 )
         self.robust_trend = xr.merge(_trends)

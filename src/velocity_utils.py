@@ -18,6 +18,7 @@ from matplotlib.colors import Normalize
 from matplotlib.collections import LineCollection
 from matplotlib.cm import ScalarMappable
 from matplotlib.dates import date2num
+import os
 import shapely
 from shapely import LineString, Point, box
 from shapely.ops import unary_union
@@ -25,6 +26,7 @@ import scipy.stats as stats
 import xarray as xr
 from xrspatial.multispectral import true_color
 import utils
+import warnings
 
 
 class Tools():
@@ -206,10 +208,10 @@ class CentreLiner():
                  geo,
                  buff_dist,
                  index,
+                 sample_centreline=False,
                  filter=False,
                  get_robust_trend=False,
-                 get_annual_median=False,
-                 sample_centreline=False,
+                 get_annual_quantiles=False,
                  get_rgb=False,
                  **kwargs):
         '''
@@ -239,9 +241,9 @@ class CentreLiner():
         self.coords = list(zip(*self.geo4326.exterior.coords.xy))
         # use itslive api to get list of dictionaries of zarr velocity cubes
         self.cubes = itslive.velocity_cubes.find_by_polygon(self.coords)
-
         print('getting cubes from itslive')
         self.get_cubes()
+        
         # resolution (in m) of velocity dataset
         self.res = np.mean(np.abs(self.dss[0].rio.resolution()))       
         
@@ -253,13 +255,12 @@ class CentreLiner():
         self.middate_range = kwargs.get('middate_range',
                                         self.get_mid_date_range())
         
-        self.n = kwargs.get('n', 5)
+        self.n = kwargs.get('n', False)
         
         # sample along centrelines
         if sample_centreline:
             print('sampling along centreline')
             self.sample_along_line()
-        
 
         if filter:
             print(f'filtering velocity cube')
@@ -277,9 +278,11 @@ class CentreLiner():
                 print('computing trend along centreline')
                 self.robust_centreline_trend()
 
-        if get_annual_median:
+        if get_annual_quantiles:
             print('generating annual median field')
-            self.get_annual_median(['v', 'vx', 'vy'])
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore', r'All-NaN (slice|axis) encountered')
+                self.get_annual_quantiles()
 
         if get_rgb:
             print('getting rgb mosaic')
@@ -287,7 +290,7 @@ class CentreLiner():
 
         if isinstance(geo, shapely.geometry.point.Point):
             print('generating stream line')
-            self.get_annual_median()
+            self.get_annual_quantiles()
             self.clean_median()
             self.get_stream()
 
@@ -367,10 +370,14 @@ class CentreLiner():
             self.filtered_v_idx.append(_f_idx)
 
             attrs = {
-                'middate_range': self.middate_range,
-                'ddt_range': self.ddt_range,
+                'middate_range': ' - '.join(
+                    [t.strftime('%Y/%m%d') for t in self.middate_range]
+                ),
+                'ddt_range': ' - '.join(
+                    [str(dt.components.days ) + dt.resolution_string for dt in self.ddt_range]
+                    ),
                 'MAD_n': n,
-                'date_processed': pd.Timestamp.now().strftime('%y%m%d_%H%M'),
+                'date_processed': pd.Timestamp.now().strftime('%Y%m%d_%H%M'),
                 'centreline': self.tidy_stream.wkt,
                 'centreline_id': self.index
                 }
@@ -401,21 +408,28 @@ class CentreLiner():
                                     )
         
         attrs = {
-        'middate_range': self.middate_range,
-        'ddt_range': self.ddt_range,
-        'year_counts': (self.filtered_line_df
+        'middate_range': ' - '.join(
+            [t.strftime('%Y/%m%d') for t in self.middate_range]
+        ),
+        'ddt_range': ' - '.join(
+            [str(dt.components.days ) + dt.resolution_string for dt in self.ddt_range]
+            ),
+        'year_counts': str(self.filtered_line_df
                         .groupby('cumul_dist')['year']
                         .value_counts()
                         .to_dict()),
-        'date_processed': pd.Timestamp.now().strftime('%y%m%d_%H%M'),
+        'date_processed': pd.Timestamp.now().strftime('%Y%m%d_%H%M'),
         'centreline': self.tidy_stream.wkt,
         'centreline_id': self.index
         }
         self.centreline_trend_df.attrs = attrs
         
-        _path = f'results/velocity/centreline_trend/id{self.index}.parquet'
-        self.centreline_trend_df.to_parquet(_path)
-        print(f'written to {_path}')
+        _path = f'results/velocity/centreline_trend/id{self.index}_trend.parquet'
+        if os.path.exists(os.path.dirname(_path)):
+            self.centreline_trend_df.to_parquet(_path)
+            print(f'written to {_path}')
+        else:
+            print('it is done, but not saved')
 
     def robust_spatial_trends(self,
                               middate_range=False,
@@ -478,46 +492,66 @@ class CentreLiner():
                   mode='w'))
     
     def get_annual_quantiles(self,
+                             vars=['v', 'vx', 'vy'],
                              qs=[0.25, 0.5, 0.75]):
         '''
-        groups by year of mid_date and computes median
-        of velocity field.
-        gets median of **filtered** velocities. which
-        means that this median is not equal to the same median
-        that is used when doing the outlier detections
-        median calculated for each [filtered] velocity cube
+        groups by year of mid_date and computes lower, median, and upper
+        quantiles of velocity field.
+        gets lq, median, uq  of **filtered** velocities.
+        
+        lq,median,uq calculated for each [filtered] velocity cube
         this gives them a common `year` index, along which they can
         be aligned with xr.merge so this returns a single dataset
+        
+        by default the variables included in self.filtered_v are
+        v, vx, and vy.
 
-        inputs: vars - list of variables to apply median to
-        defaults to ['v', 'vx', 'vy'] as the component medians
-        are used for constructing flow lines
-
-        returns median dataset (self.median)
-        '''      
+        inputs: qs: list of quantiles of calculated
+            defaults to lower (0.25), median (0.5) and
+            upper (0.75)
+        
+        returns dataset dims: x, y, year, q (self.q_v)
+        '''
         q_dss = []
+        count_dss = []
         for ds in self.filtered_v:
             
-            _q_ds = (ds.chunk({'mid_date': -1})
+            _q_ds = (ds[vars].chunk({'mid_date': -1})
                      .groupby(ds.mid_date.dt.year)
                      .quantile(qs, dim='mid_date')
                      )
+            
+            _c_ds = (ds['v'].chunk({'mid_date': -1})
+                     .groupby(ds.mid_date.dt.year)
+                     .count()
+                     .rename('count')
+                     )
 
-            q_dss.append(_q_ds)
+            q_dss.append(xr.merge([_q_ds, _c_ds]))
             
         self.q_v = xr.merge(q_dss)
         
         attrs = {
-            'middate_range': self.middate_range,
-            'ddt_range': self.ddt_range,
+            'middate_range': ' - '.join(
+                [t.strftime('%Y/%m%d') for t in self.middate_range]
+            ),
+            'ddt_range': ' - '.join(
+                [str(dt.components.days ) + dt.resolution_string for dt in self.ddt_range]
+                ),
             'MAD_n': self.n,
-            'date_processed': pd.Timestamp.now().strftime('%y%m%d_%H%M'),
+            'date_processed': pd.Timestamp.now().strftime('%Y%m%d_%H%M'),
             'centreline': self.tidy_stream.wkt,
             'centreline_id': self.index
         }
         
         self.q_v.attrs = attrs
         
+        _path = f'results/velocity/annual_fields/id{self.index}_vField.zarr'
+        if os.path.exists(os.path.dirname(_path)):
+            self.q_v.chunk('auto').to_zarr(_path, mode='w')
+            print(f'written to {_path}')
+        else:
+            print('it is done, but not saved')
 
     # stream / centreline work fucntions
     def clean_median(self):
@@ -710,7 +744,7 @@ class CentreLiner():
         _height = _maxy - _miny
         _buff_dist = max(_width, _height)
         _centroid = unary_union(self.bboxes).centroid
-        _composite = imagery.get_annual_median_mosaic(
+        _composite = imagery.get_annual_quantiles_mosaic(
             geo=_centroid,
             buffer_dist=_buff_dist,
             src_crs=3413,

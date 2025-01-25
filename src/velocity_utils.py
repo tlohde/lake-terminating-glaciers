@@ -43,7 +43,7 @@ class Tools():
         idx = ((ds_df[var] >= lower) & (ds_df[var] < upper))
         if isinstance(ds_df, (xr.core.dataset.Dataset,
                               xr.core.dataarray.DataArray)):
-            return ds_df.sel({axis:idx}), idx
+            return idx
         if isinstance(ds_df, pd.core.frame.DataFrame):
             return idx
     
@@ -187,6 +187,16 @@ class Tools():
                     .sort_values(by=['cumul_dist', 'mid_date'])
                     )
 
+    def get_year_counts(list_of_ds):
+        _counts_per_year = [ds.mid_date.groupby('mid_date.year').count() for ds in list_of_ds]
+        _years = set(itertools.chain.from_iterable([ds.year.values for ds in _counts_per_year]))
+        count_dict = {}
+        for _y in _years:
+            vals = ()
+            for ds in _counts_per_year:
+                vals += ds.sel(year=_y).values.item(),
+            count_dict[_y] = vals
+        return count_dict   
 
 class CentreLiner():
     '''
@@ -233,8 +243,7 @@ class CentreLiner():
         print('getting cubes from itslive')
         self.get_cubes()
         # resolution (in m) of velocity dataset
-        self.res = np.mean(np.abs(self.dss[0].rio.resolution()))
-
+        self.res = np.mean(np.abs(self.dss[0].rio.resolution()))       
         
         # default kwargs for filtering cube
         # only used if filter=True
@@ -242,25 +251,31 @@ class CentreLiner():
                                     ('335d', '395d'))
         
         self.middate_range = kwargs.get('middate_range',
-                                        self.get_mid_date_range(self))
+                                        self.get_mid_date_range())
         
         self.n = kwargs.get('n', 5)
         
+        # sample along centrelines
+        if sample_centreline:
+            print('sampling along centreline')
+            self.sample_along_line()
+        
 
         if filter:
-            print(f'filtering velocity cube:'
-                  f'mid_dates:\t{self.middate_range}\n'
-                  f'ddt:\t{self.ddt_range}\n'
-                  f'mad:\t{self.n}')
+            print(f'filtering velocity cube')
             self.filter_v_components(middate_range=self.middate_range,
                                      ddt_range=self.ddt_range,
                                      n=self.n)
 
         if get_robust_trend:
-            robust_trend_export = kwargs.get('robust_trend_export', False)
-            print('computing spatial trends')
-            self.robust_spatial_trends(ddt_range=self.ddt_range,
-                                       export=robust_trend_export)
+            assert get_robust_trend in ['line', 'cube', 'both'], 'oops'
+            if get_robust_trend in ['cube', 'both']:
+                print('computing spatial trends')
+                self.robust_spatial_trends(middate_range=self.middate_range,
+                                           ddt_range=self.ddt_range)
+            if get_robust_trend in ['line', 'both']:
+                print('computing trend along centreline')
+                self.robust_centreline_trend()
 
         if get_annual_median:
             print('generating annual median field')
@@ -276,11 +291,6 @@ class CentreLiner():
             self.clean_median()
             self.get_stream()
 
-        # sample along centrelines
-        if sample_centreline:
-            print('sampling along centreline')
-            self.pair_points_with_box()
-            self.sample_along_line()
 
     def get_cubes(self):
         '''
@@ -309,17 +319,6 @@ class CentreLiner():
         max_date = max_dates.max()
         self.middate_range = (min_date, max_date)
 
-    def get_year_counts(list_of_ds):
-        _counts_per_year = [ds.mid_date.groupby('mid_date.year').count() for ds in list_of_ds]
-        _years = set(itertools.chain.from_iterable([ds.year.values for ds in _counts_per_year]))
-        count_dict = {}
-        for _y in _years:
-            vals = ()
-            for ds in _counts_per_year:
-                vals += ds.sel(year=_y).values.item(),
-            count_dict[_y] = vals
-        return count_dict   
-
     def filter_v_components(self,
                             middate_range=False,
                             ddt_range=False,
@@ -340,6 +339,9 @@ class CentreLiner():
         constructs two new lists: filtered_v and filtered_v_idx
         filtered_v houses the filtered velocity datasets
         filtered_v_idx the mid_date / date_ddt boolean indexer
+        
+        if centreline has been sampled and `self.line_df` exists
+        this will be filtered by ddt and middate (NOT BY MAD)
         '''
         self.filtered_v = []
         self.filtered_v_idx = []
@@ -364,11 +366,61 @@ class CentreLiner():
             
             self.filtered_v_idx.append(_f_idx)
 
+            attrs = {
+                'middate_range': self.middate_range,
+                'ddt_range': self.ddt_range,
+                'MAD_n': n,
+                'date_processed': pd.Timestamp.now().strftime('%y%m%d_%H%M'),
+                'centreline': self.tidy_stream.wkt,
+                'centreline_id': self.index
+                }
+            for ds in self.filtered_v:
+                ds.attrs = attrs                
+            
+        # filter centreline df
+        if hasattr(self, 'line_df'):
+            _df_idx = Tools.filter_middate_datedt(self.line_df,
+                                                  middate_range,
+                                                  ddt_range)
+            _nan_idx = ~self.line_df['v'].isna()
+            self.filtered_line_df = self.line_df[_df_idx & _nan_idx]
+        
+    def robust_centreline_trend(self):
+        def trend_df(df, y='v', t='mid_date'):
+            return utils.Trends.robust_slope(y=df[y], t=df[t])
+            
+        self.centreline_trend_df = (self.filtered_line_df.groupby('cumul_dist')
+                                    .apply(trend_df)
+                                    .apply(pd.Series)
+                                    .rename(columns={
+                                        0: 'slope',
+                                        1: 'intercept',
+                                        2: 'low_slope',
+                                        3: 'high_slope'
+                                        })
+                                    )
+        
+        attrs = {
+        'middate_range': self.middate_range,
+        'ddt_range': self.ddt_range,
+        'year_counts': (self.filtered_line_df
+                        .groupby('cumul_dist')['year']
+                        .value_counts()
+                        .to_dict()),
+        'date_processed': pd.Timestamp.now().strftime('%y%m%d_%H%M'),
+        'centreline': self.tidy_stream.wkt,
+        'centreline_id': self.index
+        }
+        self.centreline_trend_df.attrs = attrs
+        
+        _path = f'results/velocity/centreline_trend/id{self.index}.parquet'
+        self.centreline_trend_df.to_parquet(_path)
+        print(f'written to {_path}')
+
     def robust_spatial_trends(self,
                               middate_range=False,
                               ddt_range=False,
-                              _var='v',
-                              export=False):
+                              _var='v'):
         _trends = []
         for ds in self.dss:
             _list_of_filtered_dss = []
@@ -386,7 +438,7 @@ class CentreLiner():
                 )
         self.robust_trend = xr.merge(_trends)
         
-        year_counts = get_year_counts(_list_of_filtered_dss)
+        year_counts = Tools.get_year_counts(_list_of_filtered_dss)
         
         # add some meta data        
         _now = pd.Timestamp.now().strftime('%y%m%d_%H%M')
@@ -402,16 +454,16 @@ class CentreLiner():
             'centreline': self.tidy_stream.wkt,
             'centreline_id': self.index
         }
-        
-        if export:
-            _path = 'results/intermediate/velocity/robust_annual_trends/'
-            _file = f'id{self.index}_{_now}.zarr'
-            print(f'now exporting and computing trend output\n{_path}{_file}')
-            (self.robust_trend['v_trend']
-             .chunk(dict(zip(self.robust_trend['v_trend'].dims,
-                             self.robust_trend['v_trend'].shape)))
-             .to_zarr(_path+_file,
-                      mode='w'))
+    
+        _path = 'results/intermediate/velocity/robust_annual_trends/'
+        _file = f'id{self.index}_{_now}.zarr'
+        print(f'now exporting and computing trend output\n{_path}{_file}')
+        (self.robust_trend['v_trend']
+            .chunk(dict(zip(self.robust_trend['v_trend'].dims,
+                            self.robust_trend['v_trend'].shape)))
+            .to_zarr(_path+_file,
+                    mode='w'))
+        print('finished writing')
 
     @dask.delayed
     def export_trend(self):
@@ -425,7 +477,8 @@ class CentreLiner():
          .to_zarr(_path+_file,
                   mode='w'))
     
-    def get_annual_median(self, vars=['v', 'vx', 'vy']):
+    def get_annual_quantiles(self,
+                             qs=[0.25, 0.5, 0.75]):
         '''
         groups by year of mid_date and computes median
         of velocity field.
@@ -441,13 +494,30 @@ class CentreLiner():
         are used for constructing flow lines
 
         returns median dataset (self.median)
-        '''
-        medians = []
+        '''      
+        q_dss = []
         for ds in self.filtered_v:
-            medians.append(ds[vars]
-                           .groupby(ds.mid_date.dt.year)
-                           .median())  # .compute()) can compute here...
-        self.median = xr.merge(medians)
+            
+            _q_ds = (ds.chunk({'mid_date': -1})
+                     .groupby(ds.mid_date.dt.year)
+                     .quantile(qs, dim='mid_date')
+                     )
+
+            q_dss.append(_q_ds)
+            
+        self.q_v = xr.merge(q_dss)
+        
+        attrs = {
+            'middate_range': self.middate_range,
+            'ddt_range': self.ddt_range,
+            'MAD_n': self.n,
+            'date_processed': pd.Timestamp.now().strftime('%y%m%d_%H%M'),
+            'centreline': self.tidy_stream.wkt,
+            'centreline_id': self.index
+        }
+        
+        self.q_v.attrs = attrs
+        
 
     # stream / centreline work fucntions
     def clean_median(self):
@@ -569,11 +639,21 @@ class CentreLiner():
         with the appropriate cube for sampling
         returns self.grouped which is a list of geodataframes
         with index `cumul_dist` and the point
+        
+        samples every 250 m along centreline
         '''
         self.bboxes = [box(*ds.rio.bounds()) for ds in self.dss]
         self.points = [self.tidy_stream.interpolate(i, normalized=True)
                        for i in np.arange(0, 1, 0.01)]
-        self.cumul_dist = [self.tidy_stream.project(p) for p in self.points]
+        self.points = [
+            self.tidy_stream.interpolate(x)
+            for x in np.arange(0,
+                               self.tidy_stream.length + 250,
+                               250)
+            ]
+        self.cumul_dist = [
+            self.tidy_stream.project(p)/1000 for p in self.points
+            ]
 
         # geodataframe of centreline vertices
         _gdf_points = (gpd.GeoDataFrame(geometry=list(self.points),
@@ -603,6 +683,7 @@ class CentreLiner():
         the whole domain
         returns pandas dataframe
         '''
+        self.pair_points_with_box()
         _dfs = []
         for _ps, _ds in zip(self.grouped, self.dss):
             # consider using .coarsen() here as way of sampling around
@@ -611,14 +692,14 @@ class CentreLiner():
                                 'acquisition_date_img1',
                                 'acquisition_date_img2',
                                 'date_dt']]
-                           .sel(x=_ps['x'].to_xarray(),
-                                y=_ps['y'].to_xarray(),
-                                method='nearest')
+                           .interp(x=_ps['x'].to_xarray(),
+                                   y=_ps['y'].to_xarray())
                            .to_dataframe()
                            .drop(columns='mapping')
                            )
             _sampled_ds.reset_index(inplace=True)
             _sampled_ds['year'] = _sampled_ds.mid_date.dt.year
+            _sampled_ds['cumul_dist'] = _sampled_ds['cumul_dist'].round(2)
             _dfs.append(_sampled_ds)
         self.line_df = pd.concat(_dfs).sort_values(by=['mid_date',
                                                        'cumul_dist'])

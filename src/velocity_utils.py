@@ -673,8 +673,8 @@ class CentreLiner():
         with the appropriate cube for sampling
         returns self.grouped which is a list of geodataframes
         with index `cumul_dist` and the point
-        
         samples every 250 m along centreline
+        `index_right` can be used to index self.dss.
         '''
         self.bboxes = [box(*ds.rio.bounds()) for ds in self.dss]
         self.points = [self.tidy_stream.interpolate(i, normalized=True)
@@ -716,12 +716,17 @@ class CentreLiner():
         medians to calculate rather than doing so for
         the whole domain
         returns pandas dataframe
+        
+        ################ if there are two cubes in the domain, but the line only crosses the second
+        cube - this falls over, because len(self.grouped) == 1 whereas self.dss == 2.
+        
         '''
         self.pair_points_with_box()
         _dfs = []
-        for _ps, _ds in zip(self.grouped, self.dss):
+        for _ps in self.grouped:
+            _dssIdx = _ps['index_right'].unique().item()
             # consider using .coarsen() here as way of sampling around
-            _sampled_ds = (_ds[['v', 'vx', 'vy',
+            _sampled_ds = (self.dss[_dssIdx][['v', 'vx', 'vy',
                                 'v_error', 'vx_error', 'vy_error',
                                 'acquisition_date_img1',
                                 'acquisition_date_img2',

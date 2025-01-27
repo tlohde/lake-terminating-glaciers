@@ -11,6 +11,6 @@ printf "\nworking on: $1\n"
 python src/velocity_robust_spatial_trends.py \
 --centrelines data/streams_v3.geojson \
 --index $1 \
---middate1 2010/01/01 --middate2 2024/01/01 \
+--middate1 2010/01/01 --middate2 2025/01/01 \
 --filter --sample_centreline \
 --get_robust_trend line --get_quartiles

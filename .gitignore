@@ -5,6 +5,7 @@ data/*
 _nothing.md
 src/__pycache__
 results/intermediate/velocity/*.tif*
+results/**/
 *.gif
 *.html
 *.tif.aux.xml

@@ -393,8 +393,11 @@ class CentreLiner():
             self.filtered_line_df = self.line_df[_df_idx & _nan_idx]
         
     def robust_centreline_trend(self):
+        @dask.delayed
         def trend_df(df, y='v', t='mid_date'):
             return utils.Trends.robust_slope(y=df[y], t=df[t])
+        
+        _grps = self.filtered_line_df.grou
             
         self.centreline_trend_df = (self.filtered_line_df.groupby('cumul_dist')
                                     .apply(trend_df)

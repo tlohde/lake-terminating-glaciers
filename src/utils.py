@@ -261,7 +261,7 @@ class Site():
         returns the opened files
         '''
         
-        directories = glob('data/id*')
+        directories = glob('/scratch/s1759665/paper2/data/id*')
         directory = [d for d in directories if f'id{id}_' in d]
         assert len(directory) == 1, 'too many or not enough'
         self.directory = directory[0]
@@ -273,8 +273,8 @@ class Site():
             'coreg_meta': os.path.join(self.directory, 'coregistration_metadata.parquet'),
             'stable_terrain': os.path.join(self.directory, 'stable_terrain_mask.tif'),
             'centreline': os.path.join(self.directory, glob('line*.geojson', root_dir=self.directory)[0]),
-            'v_field': glob(f'results/velocity/annual_fields/id{id}_*')[0],
-            'v_cl': glob(f'results/velocity/centreline_trend/id{id}_*')[0]
+            'v_field': glob(f'/scratch/s1759665/paper2/results/velocity/annual_fields/id{id}_*')[0],
+            'v_cl': glob(f'/scratch/s1759665/paper2/results/velocity/centreline_trend/id{id}_*')[0]
             }
 
         to_remove = []

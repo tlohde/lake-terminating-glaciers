@@ -3,10 +3,13 @@
 - functions for computing robust trends,
 and piecewise trends in Trends()
 '''
+import geopandas as gpd
+from glob import glob
 import numpy as np
 import os
 import pandas as pd
 import pyproj
+import rioxarray as rio
 from scipy import interpolate, optimize
 from scipy.stats.mstats import theilslopes
 import shapely
@@ -88,7 +91,45 @@ class misc():
         and returns dataframe that only contains rows where col==val
         '''
         return df.loc[df[col] == min(df[col], key=lambda x: abs(x - val))]
-   
+    
+    @staticmethod
+    def demote_coords_to_vars(ds: xr.Dataset,
+                        coords: str,
+                        var_name: str):
+        '''
+        messy onliner to for reorganizing dataset.
+        e.g. dataset with two variables: a (dims: x, y, t) and b (dims: x, y)
+        this function will convert it to a dataset with 
+        dimensions x, y and add as many `a` variables as there dim `t` is long
+        '''
+        return xr.merge([
+            ds.drop_vars([coords, var_name]),
+            xr.merge(
+                [ds[var_name].isel({coords:i}).rename(ds[coords][i].item())
+                for i in range(len(ds[coords]))], compat='override').drop_vars(coords)]
+                        )
+
+    @staticmethod
+    def sample_along_line(ds, line, freq=250):
+        '''
+        sample dhdt xarray along centreline
+        '''
+        
+        points = [
+            line.interpolate(x) for
+            x in np.arange(0, line.length+freq, freq)
+            ]
+        distance = [line.project(p)/1000 for p in points]
+        distance = np.round(distance, 2)
+        x = [p.x for p in points] 
+        y = [p.y for p in points]
+        df = pd.DataFrame({'distance (km)': distance,
+                        'x': x,
+                        'y': y})
+        idx = df.set_index('distance (km)').to_xarray()
+        return ds.interp(x=idx['x'],
+                         y=idx['y'])
+        
 
 class Trends():
     @staticmethod
@@ -204,3 +245,61 @@ class Trends():
                 break
 
         return func(r_.x)  # Return the last (n-1)
+
+
+class Site():
+    def __init__(self,
+                 id: int,
+                 vars: list=['sec', 'dem', 'sample', 'coreg_meta',
+                             'stable_terrain', 'centreline',
+                             'v_field', 'v_cl']):
+        
+        '''
+        convenience class for opening output files from directory id
+        id = id number of study site directory
+        vars = list of variables to include
+        returns the opened files
+        '''
+        
+        directories = glob('data/id*')
+        directory = [d for d in directories if f'id{id}_' in d]
+        assert len(directory) == 1, 'too many or not enough'
+        self.directory = directory[0]
+
+        self.paths = {
+            'sec': os.path.join(self.directory, 'sec.zarr'),
+            'dem': os.path.join(self.directory, 'stacked_coregd.zarr'),
+            'sample': os.path.join(self.directory, 'sec_sample.parquet'),
+            'coreg_meta': os.path.join(self.directory, 'coregistration_metadata.parquet'),
+            'stable_terrain': os.path.join(self.directory, 'stable_terrain_mask.tif'),
+            'centreline': os.path.join(self.directory, glob('line*.geojson', root_dir=self.directory)[0]),
+            'v_field': glob(f'results/velocity/annual_fields/id{id}_*')[0],
+            'v_cl': glob(f'results/velocity/centreline_trend/id{id}_*')[0]
+            }
+
+        to_remove = []
+        for k, v in self.paths.items():
+            if os.path.exists(v):
+                continue
+            else:
+                to_remove.append(k)
+        
+        [self.paths.pop(k) for k in to_remove]
+                
+        self.open_funcs = {
+            '.tif': rio.open_rasterio,
+            '.zarr': xr.open_zarr,
+            '.parquet': pd.read_parquet,
+            '.geojson': gpd.read_file
+        }
+        
+        for var in [var for var in vars if var in self.paths.keys()]:
+            _, extension = os.path.splitext(self.paths[var])
+            setattr(self, var, self.open_funcs[extension](self.paths[var]))
+        
+        self.cl = self.centreline['geometry'][0]
+        
+        try:
+            self.sec = misc.demote_coords_to_vars(self.sec, 'result', 'sec')
+        except:
+            pass

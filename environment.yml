@@ -1,7 +1,7 @@
-name: /home/tlohde/miniconda3/envs/paper2
+name: pro
 channels:
-  - defaults
   - conda-forge
+  - defaults
 dependencies:
   - _libgcc_mutex=0.1
   - _openmp_mutex=4.5

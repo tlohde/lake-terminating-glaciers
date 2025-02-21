@@ -104,6 +104,8 @@ class Sentinel1():
             bounds_latlon=self.geometry.bounds
             )
 
+        self.s1_ds = self.s1_ds.rename('s1')
+        
         self.epsg = int(
             self.s1_ds.attrs['crs'].split(':')[-1]
         )
@@ -119,6 +121,8 @@ class Sentinel1():
         self.dB = xr.where(self.mask==self.id,
                            10 * np.log10(self.s1_ds),
                            np.nan)
+        
+        self.dB = self.dB.rename('dB')
 
     def get_unique_orbits(self):
         self.unique_relative_orbits = np.unique(self.s1_ds['sat:relative_orbit'])
@@ -209,8 +213,8 @@ class Sentinel1():
 
             self.angles.append(angle)
 
-        self.angle_ds = xr.concat(self.angles, dim='relative_orbit')
-        self.angle_ds['relative_orbit'] = list(self.orb_dirs.keys())
+        self.angle_ds = xr.concat(self.angles, dim='sat:relative_orbit')
+        self.angle_ds['sat:relative_orbit'] = list(self.orb_dirs.keys())
         
         if self.flipped:
             # need to flip y axis back to align with dB and mask
@@ -230,8 +234,10 @@ class Sentinel1():
         ## add in some additinoal data
         self.angle_ds['grd'] = xr.DataArray(
             list(self.orb_dirs.values()),
-            coords={'relative_orbit' :self.angle_ds['relative_orbit']}
+            coords={'sat:relative_orbit' :self.angle_ds['sat:relative_orbit']}
             )
+        
+        self.angle_ds = self.angle_ds.rename('incident_angle')
         
         attrs = {
             'geometry': wkt.dumps(self.geometry),
@@ -242,11 +248,11 @@ class Sentinel1():
         
         self.angle_ds.attrs = attrs
         
-        ## export:
-        # self.angle_ds.to_zarr(
-        #     f'../results/lakeIce/id{self.id}_s1_incident_angles.zarr',
-        #     mode='w'
-        #     )
+        # export:
+        self.angle_ds.to_zarr(
+            f'../results/lakeIce/id{self.id}_s1_incident_angles.zarr',
+            mode='w'
+            )
         
         def tidy_up(self):
             2+2

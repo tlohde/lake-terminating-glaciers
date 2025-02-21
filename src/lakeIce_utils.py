@@ -3,27 +3,19 @@ from dask.distributed import LocalCluster
 import dask
 import dask.dataframe as dd
 import geopandas as gpd
-from itertools import product
 import numpy as np
-import matplotlib.pyplot as plt
 import pandas as pd
 import pystac
 import pystac_client
 import planetary_computer
 import rioxarray as rio
-import seaborn as sns
-from shapely.geometry import LineString, Point, box, Polygon
+from shapely import wkt
 import stackstac
-from tqdm import tqdm
 import xarray as xr
 import xarray_sentinel as xrs
-import utils
 from geocube.api.core import make_geocube
-
 import os
 import sarsen
-import adlfs
-import requests
 
 
 def mirror_folder(fs, bucket, folder):
@@ -37,10 +29,11 @@ def mirror_folder(fs, bucket, folder):
                 fs.download(file_path, lfile_path + "~")
                 os.rename(lfile_path + "~", lfile_path)
 
-class Sentinel11():
+class Sentinel1():
     def __init__(self, row):
         self.geometry = row.geometry  # must be in epsg:4326
         self.id = row.id
+        self.region = row.SUBREGION1
 
 
         self.gdf = gpd.GeoDataFrame(geometry=[self.geometry],
@@ -82,7 +75,10 @@ class Sentinel11():
 
             ## prep for sarsen
             if self.dem.y.diff('y').values[0] < 0:
+                self.flipped = True
                 self.dem = self.dem.isel(y=slice(None, None, -1))
+            else:
+                self.flipped = False
             self.dem.attrs['long_name'] = 'elevation'
             self.dem.attrs['units'] = 'm'
             self.dem = self.dem.rename('dem').squeeze(drop=True)
@@ -125,9 +121,9 @@ class Sentinel11():
                            np.nan)
 
     def get_unique_orbits(self):
-        unique_relative_orbits = np.unique(self.s1_ds['sat:relative_orbit'])
+        self.unique_relative_orbits = np.unique(self.s1_ds['sat:relative_orbit'])
         folders = []
-        for orb in unique_relative_orbits:
+        for orb in self.unique_relative_orbits:
 
             ids = self.s1_ds[self.s1_ds['sat:relative_orbit']==orb].id.values
 
@@ -148,7 +144,7 @@ class Sentinel11():
                     folders.append(grd_band.href[53:-23])
                     break
 
-        self.orb_dirs = dict(zip(unique_relative_orbits, folders))
+        self.orb_dirs = dict(zip(self.unique_relative_orbits, folders))
 
     def download_s1_safes(self):
 
@@ -168,9 +164,9 @@ class Sentinel11():
                                                  b,
                                                  coordinate_conversion=coord_conversion)
 
+        self.angles = []
+        
         for orb, folder in self.orb_dirs.items():
-
-            angles = []
 
             orbit_ecef, _ = sarsen.sentinel1.open_dataset_autodetect(folder, group='IW/HH/orbit')
 
@@ -211,7 +207,48 @@ class Sentinel11():
                                      dem_direction,
                                      dims="axis"))
 
-            angles.append(angle)
+            self.angles.append(angle)
 
-        self.angle_ds = xr.concat(angles, dim='orbit')
-        self.angle_ds['orbit'] = list(self.orb_dirs.keys())
+        self.angle_ds = xr.concat(self.angles, dim='relative_orbit')
+        self.angle_ds['relative_orbit'] = list(self.orb_dirs.keys())
+        
+        if self.flipped:
+            # need to flip y axis back to align with dB and mask
+            self.angle_ds = self.angle_ds.isel(y=slice(None, None, -1))
+        
+        self.angle_ds = self.angle_ds.drop_vars(
+            ['band', 'platform', 'proj:shape', 'proj:epsg', 'spatial_ref', 'gsd']
+            )
+    
+        # apply mask
+        self.angle_ds = xr.where(self.mask==self.id,
+                                 self.angle_ds,
+                                 np.nan)
+        
+        self.angle_ds = self.angle_ds.rio.write_crs(self.s1_ds.rio.crs)
+        
+        ## add in some additinoal data
+        self.angle_ds['grd'] = xr.DataArray(
+            list(self.orb_dirs.values()),
+            coords={'relative_orbit' :self.angle_ds['relative_orbit']}
+            )
+        
+        attrs = {
+            'geometry': wkt.dumps(self.geometry),
+            'id': self.id,
+            'region': self.region,
+            'date_processed': pd.Timestamp.now().strftime('%y%m%d_%H%M')
+        }
+        
+        self.angle_ds.attrs = attrs
+        
+        ## export:
+        # self.angle_ds.to_zarr(
+        #     f'../results/lakeIce/id{self.id}_s1_incident_angles.zarr',
+        #     mode='w'
+        #     )
+        
+        def tidy_up(self):
+            2+2
+            # remove everything downloaded during mirror_folder
+        

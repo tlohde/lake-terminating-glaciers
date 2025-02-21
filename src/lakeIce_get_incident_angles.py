@@ -1,0 +1,1 @@
+# script here to grab all incident angle data arrays

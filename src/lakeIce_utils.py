@@ -1,4 +1,5 @@
 # use `pro` env
+import dask.delayed
 from dask.distributed import LocalCluster
 import dask
 import dask.dataframe as dd
@@ -30,10 +31,11 @@ def mirror_folder(fs, bucket, folder):
                 os.rename(lfile_path + "~", lfile_path)
 
 class Sentinel1():
-    def __init__(self, row):
+    def __init__(self, row, export=False):
         self.geometry = row.geometry  # must be in epsg:4326
         self.id = row.id
         self.region = row.SUBREGION1
+        self.export_angle = export
 
 
         self.gdf = gpd.GeoDataFrame(geometry=[self.geometry],
@@ -49,10 +51,12 @@ class Sentinel1():
         self.get_lazy_staccstack()
         self.make_mask()
         self.mask_to_dB()
+        self.get_median()
         self.get_dem()
         self.get_unique_orbits()
         self.download_s1_safes()
         self.get_incident_angles()
+        self.angle_sample()
 
     def get_dem(self, res=30):
 
@@ -123,6 +127,12 @@ class Sentinel1():
                            np.nan)
         
         self.dB = self.dB.rename('dB')
+    
+    def get_median(self):
+        self.median = (self.dB
+                       .median(dim=['y', 'x'], skipna=True)
+                       .rename('dB')
+                       )
 
     def get_unique_orbits(self):
         self.unique_relative_orbits = np.unique(self.s1_ds['sat:relative_orbit'])
@@ -248,13 +258,62 @@ class Sentinel1():
         
         self.angle_ds.attrs = attrs
         
-        # export:
-        self.angle_ds.to_zarr(
-            f'../results/lakeIce/id{self.id}_s1_incident_angles.zarr',
-            mode='w'
-            )
+        if self.export_angle:
+            self.angle_ds.to_zarr(
+                f'../results/lakeIce/id{self.id}_s1_incident_angles.zarr',
+                mode='w'
+                )
         
-        def tidy_up(self):
-            2+2
-            # remove everything downloaded during mirror_folder
+    def angle_sample(self, band='hh', N=200):
+    
+        _x = xr.DataArray(np.random.choice(self.angle_ds.x, N), dims=('xy'))
+        _y = xr.DataArray(np.random.choice(self.angle_ds.y, N), dims=('xy'))
+
+        dbdf = [(self.dB
+                .sel(x=_x, y=_y, band=b)
+                .to_pandas()
+                .stack()
+                .reset_index()
+                .rename(columns={0: f'dB_{b}'})
+        ) for b in self.dB.band.values]
+
+        dbdf = pd.merge(dbdf[0], dbdf[1],
+                        left_on=['xy', 'time'],
+                        right_on=['xy', 'time'])
+
+        orbdf = (self.dB
+                .sel(x=_x, y=_y, band=self.dB.band.values[0])['sat:relative_orbit']
+                .to_pandas()
+                .rename('sat:relative_orbit')
+        )
+
+        angledf = (self.angle_ds
+                   .sel(x=_x, y=_y)
+                   .to_pandas()
+                   .stack()
+                   .reset_index()
+                   .rename(columns={0: 'angle'})
+                   )
+        
+        df = dbdf.merge(
+                orbdf,
+                left_on='time',
+                right_index=True
+        )
+        
+        df = df.merge(
+                angledf,
+                left_on=['xy', 'sat:relative_orbit'],
+                right_on=['xy', 'sat:relative_orbit']
+        )
+        
+        df['month'] = df['time'].dt.month
+        
+        self.sampled = df
+        self.sampled['id'] = self.id
+        self.sampled['region'] = self.region
+    
+    def tidy_up(self):
+        2+2
+        # remove everything downloaded during mirror_folder
         

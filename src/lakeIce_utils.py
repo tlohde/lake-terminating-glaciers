@@ -31,11 +31,13 @@ def mirror_folder(fs, bucket, folder):
                 os.rename(lfile_path + "~", lfile_path)
 
 class Sentinel1():
-    def __init__(self, row, export=False):
+    def __init__(self, row, export=True):
         self.geometry = row.geometry  # must be in epsg:4326
         self.id = row.id
         self.region = row.SUBREGION1
         self.export_angle = export
+        self.angle_export_path = f'../results/lakeIce/id{self.id}_s1_incident_angles.zarr'
+        self.sample_export_path = f'../results/lakeIce/id{self.id}_sample.parquet'
 
 
         self.gdf = gpd.GeoDataFrame(geometry=[self.geometry],
@@ -52,43 +54,19 @@ class Sentinel1():
         self.make_mask()
         self.mask_to_dB()
         self.get_median()
-        self.get_dem()
-        self.get_unique_orbits()
-        self.download_s1_safes()
-        self.get_incident_angles()
+        
+        if os.path.exists(self.angle_export_path):
+            print('already got incident angle ds...reading from .zarr')
+            self.angle_ds = xr.open_zarr(self.angle_export_path)['incident_angle']
+        else:
+            print('need to get orbit info for calculating incident angles')
+            self.get_dem()
+            self.get_unique_orbits()
+            self.download_s1_safes()
+            self.get_incident_angles()
+        
         self.angle_sample()
 
-    def get_dem(self, res=30):
-
-        search = self.catalog.search(collections=[f'cop-dem-glo-{res}'],
-                                     intersects=self.geometry.envelope)
-
-        items = search.item_collection()
-        if len(items) > 0:
-            dem = (stackstac.stack(
-                items,
-                epsg=self.epsg)
-            )
-
-            self.dem = (dem
-                        .mean(dim='time', skipna=True)
-                        .squeeze()
-                        .rio.write_crs(self.epsg)
-                        .rio.reproject_match(self.s1_ds, nodata=np.nan)
-                        )
-
-            ## prep for sarsen
-            if self.dem.y.diff('y').values[0] < 0:
-                self.flipped = True
-                self.dem = self.dem.isel(y=slice(None, None, -1))
-            else:
-                self.flipped = False
-            self.dem.attrs['long_name'] = 'elevation'
-            self.dem.attrs['units'] = 'm'
-            self.dem = self.dem.rename('dem').squeeze(drop=True)
-
-            self.dem_ecef = sarsen.scene.convert_to_dem_ecef(self.dem,
-                                                             source_crs=self.dem.rio.crs)
 
     def get_lazy_staccstack(self):
 
@@ -133,6 +111,38 @@ class Sentinel1():
                        .median(dim=['y', 'x'], skipna=True)
                        .rename('dB')
                        )
+
+    def get_dem(self, res=30):
+
+        search = self.catalog.search(collections=[f'cop-dem-glo-{res}'],
+                                     intersects=self.geometry.envelope)
+
+        items = search.item_collection()
+        if len(items) > 0:
+            dem = (stackstac.stack(
+                items,
+                epsg=self.epsg)
+            )
+
+            self.dem = (dem
+                        .mean(dim='time', skipna=True)
+                        .squeeze()
+                        .rio.write_crs(self.epsg)
+                        .rio.reproject_match(self.s1_ds, nodata=np.nan)
+                        )
+
+            ## prep for sarsen
+            if self.dem.y.diff('y').values[0] < 0:
+                self.flipped = True
+                self.dem = self.dem.isel(y=slice(None, None, -1))
+            else:
+                self.flipped = False
+            self.dem.attrs['long_name'] = 'elevation'
+            self.dem.attrs['units'] = 'm'
+            self.dem = self.dem.rename('dem').squeeze(drop=True)
+
+            self.dem_ecef = sarsen.scene.convert_to_dem_ecef(self.dem,
+                                                             source_crs=self.dem.rio.crs)
 
     def get_unique_orbits(self):
         self.unique_relative_orbits = np.unique(self.s1_ds['sat:relative_orbit'])
@@ -231,7 +241,9 @@ class Sentinel1():
             self.angle_ds = self.angle_ds.isel(y=slice(None, None, -1))
         
         self.angle_ds = self.angle_ds.drop_vars(
-            ['band', 'platform', 'proj:shape', 'proj:epsg', 'spatial_ref', 'gsd']
+            ['band', 'platform', 'proj:shape', 'proj:epsg',
+             'spatial_ref', 'gsd', 'proj:transform'],
+            errors='ignore'
             )
     
         # apply mask
@@ -249,22 +261,28 @@ class Sentinel1():
         
         self.angle_ds = self.angle_ds.rename('incident_angle')
         
-        attrs = {
-            'geometry': wkt.dumps(self.geometry),
-            'id': self.id,
-            'region': self.region,
-            'date_processed': pd.Timestamp.now().strftime('%y%m%d_%H%M')
-        }
-        
-        self.angle_ds.attrs = attrs
         
         if self.export_angle:
+            attrs = {
+                'geometry': wkt.dumps(self.geometry),
+                'id': self.id,
+                'region': self.region,
+                'date_processed': pd.Timestamp.now().strftime('%y%m%d_%H%M')
+            }
+
+            self.angle_ds.attrs = attrs
+
             self.angle_ds.to_zarr(
-                f'../results/lakeIce/id{self.id}_s1_incident_angles.zarr',
+                self.angle_export_path,
                 mode='w'
                 )
+
+    def angle_sample(self, N=200):
         
-    def angle_sample(self, band='hh', N=200):
+        print(f'sampling at backscatter stack at {N} (x,y) points')
+        print('pairing observations with the following relative\
+              orbit numbers:\
+              {self.angle_ds["sat:relative_orbit"].values.tolist()}')
     
         _x = xr.DataArray(np.random.choice(self.angle_ds.x, N), dims=('xy'))
         _y = xr.DataArray(np.random.choice(self.angle_ds.y, N), dims=('xy'))
@@ -312,6 +330,18 @@ class Sentinel1():
         self.sampled = df
         self.sampled['id'] = self.id
         self.sampled['region'] = self.region
+        
+        if self.export_angle:
+            attrs = {
+                'geometry': wkt.dumps(self.geometry),
+                'id': str(self.id),
+                'region': self.region,
+                'date_processed': pd.Timestamp.now().strftime('%y%m%d_%H%M'),
+                'N': f'{N} samples over x,y domain'
+            }
+            
+            self.sampled.attrs = attrs
+            self.sampled.to_parquet(self.sample_export_path)
     
     def tidy_up(self):
         2+2

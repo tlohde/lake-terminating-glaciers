@@ -3,6 +3,7 @@ import dask.delayed
 from dask.distributed import LocalCluster
 import dask
 import dask.dataframe as dd
+from functools import reduce
 import geopandas as gpd
 import numpy as np
 import pandas as pd
@@ -31,15 +32,15 @@ def mirror_folder(fs, bucket, folder):
                 os.rename(lfile_path + "~", lfile_path)
 
 class Sentinel1():
-    def __init__(self, row, export=True):
+    def __init__(self, row, export=True, sample=True):
         self.geometry = row.geometry  # must be in epsg:4326
         self.id = row.id
         self.region = row.SUBREGION1
-        self.export_angle = export
+        self.export = export
+        self.quantile_export_path = f'../results/lakeIce/id{self.id}_backscatter_quantiles.parquet'
         self.angle_export_path = f'../results/lakeIce/id{self.id}_s1_incident_angles.zarr'
         self.sample_export_path = f'../results/lakeIce/id{self.id}_sample.parquet'
-
-
+        
         self.gdf = gpd.GeoDataFrame(geometry=[self.geometry],
                                     data={'id': [self.id]},
                                     crs=4326)
@@ -53,7 +54,11 @@ class Sentinel1():
         self.get_lazy_staccstack()
         self.make_mask()
         self.mask_to_dB()
-        self.get_median()
+        self.get_quantiles()
+        if self.export:
+            self.export_quantiles()
+                
+        # self.get_median()
         
         if os.path.exists(self.angle_export_path):
             print('already got incident angle ds...reading from .zarr')
@@ -65,7 +70,8 @@ class Sentinel1():
             self.download_s1_safes()
             self.get_incident_angles()
         
-        self.angle_sample()
+        if sample:
+            self.angle_sample()
 
 
     def get_lazy_staccstack(self):
@@ -106,11 +112,55 @@ class Sentinel1():
         
         self.dB = self.dB.rename('dB')
     
-    def get_median(self):
-        self.median = (self.dB
-                       .median(dim=['y', 'x'], skipna=True)
-                       .rename('dB')
-                       )
+    def get_quantiles(self):
+        self.quantiles = (self.dB
+                          .quantile(
+                              q=[0.05, 0.25, 0.5, 0.75, 0.95],
+                              dim=['y', 'x'],
+                              skipna=True
+                              )
+                          .rename('dB')
+                          .transpose('time', 'quantile', 'band')
+                          )
+    
+    def export_quantiles(self):
+        
+        _dfs = []
+        
+        for b in self.quantiles.band.values:
+            _df = (self.quantiles
+                   .sel(band=b)
+                   .to_pandas()
+                   .rename(columns=dict(zip(
+                       self.quantiles['quantile'].values,
+                       [f'{b}_{q}' for q in self.quantiles['quantile'].values]
+                   ))))
+            
+            _dfs.append(_df)
+        
+        self.dfs = _dfs
+            
+        df = reduce(
+            lambda left, right: pd.merge(left, right, left_index=True, right_index=True, how='outer'),
+            _dfs
+        )
+        
+        df['id'] = self.id
+        df['region'] = self.region
+        
+        attrs = {
+                'geometry': wkt.dumps(self.geometry),
+                'id': str(self.id),
+                'region': self.region,
+                'date_processed': pd.Timestamp.now().strftime('%y%m%d_%H%M')
+            }
+        
+        df.attrs = attrs
+        
+        self.dBq = df
+        
+        # df.to_parquet(self.quantile_export_path)
+
 
     def get_dem(self, res=30):
 
@@ -262,7 +312,7 @@ class Sentinel1():
         self.angle_ds = self.angle_ds.rename('incident_angle')
         
         
-        if self.export_angle:
+        if self.export:
             attrs = {
                 'geometry': wkt.dumps(self.geometry),
                 'id': self.id,
@@ -331,7 +381,7 @@ class Sentinel1():
         self.sampled['id'] = self.id
         self.sampled['region'] = self.region
         
-        if self.export_angle:
+        if self.export:
             attrs = {
                 'geometry': wkt.dumps(self.geometry),
                 'id': str(self.id),

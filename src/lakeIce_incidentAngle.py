@@ -15,9 +15,15 @@ if __name__ == "__main__":
                         type=int,
                         help='index into lakes',
                         )
+    parser.add_argument('--sample',
+                        action=argparse.BooleanOptionalAction,
+                        default=False)
+    
     args = parser.parse_args()
     index = args.index
+    sample = args.sample
     
+       
     print(f'index: {index} and cwd {os.getcwd()}')
     
     centrelines = gpd.read_file('data/streams_v3.geojson')
@@ -58,6 +64,7 @@ if __name__ == "__main__":
             warnings.simplefilter('ignore')
             li = liU.Sentinel1(
                 lakes.loc[index],
-                export=True
+                export=True,
+                sample=sample
                 )
     print('all done')

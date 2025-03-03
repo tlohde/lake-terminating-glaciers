@@ -114,10 +114,12 @@ class Sentinel1():
     
     def get_quantiles(self):
         self.quantiles = (self.dB
+                          .chunk({'x':-1,
+                                  'y':-1})
                           .quantile(
                               q=[0.05, 0.25, 0.5, 0.75, 0.95],
                               dim=['y', 'x'],
-                              skipna=True
+                              skipna=True,
                               )
                           .rename('dB')
                           .transpose('time', 'quantile', 'band')
@@ -159,7 +161,8 @@ class Sentinel1():
         
         self.dBq = df
         
-        # df.to_parquet(self.quantile_export_path)
+        print('exporting quantiles of backscatter')
+        df.to_parquet(self.quantile_export_path)
 
 
     def get_dem(self, res=30):

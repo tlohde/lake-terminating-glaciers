@@ -1,12 +1,44 @@
 # paper 2
 
-A key conclusion of [Holt et al., 2024](https://www.cambridge.org/core/journals/journal-of-glaciology/article/terminus-thinning-drives-recent-acceleration-of-a-greenlandic-laketerminating-outlet-glacier/762985B2AC938AB88E0C8CCEFE3042F2) is that profound changes in ice-dynamics at the lake-terminating glacier are driven by negative surface mass balance, which are in turn primarily driven by surface air temperatures.
+## introduction
+Ice-contact lakes influence ice dynamics near the terminus (Baurley et al., 2020; Kirkbride 1993; Sugiyama 2016; Pronk 2021), and this influence can propagate up-glacier (Holt et al., 2024).
 
-To further illustrate (/test the hypothesis: surface air temperature --> thinning --> _then_ lake processes become important) that negative SMB, as a function of surface temperature is the key driver of processes at lake-terminating outlets (versus those pertaining to geometry/bed topography), the surface elevation change (SEC) and ice velocity analysis already conducted can be duplicated at study sites around Greenland (with a stretch goal of including Iceland), using latitude as a proxy for the magnitude of change in SMB over the last decade.
+Observed increase in prevalence  of ice-contact lakes over the satellite era (Carrivick and Quincey, 2014; Shugar et al, 2020; How et al, 2021; Rick et al, 2022).
+
+Estimates of subglacial bed topography (Morlighem et al., 2017) suggest that there are many over-deepenings (Patton et al., 2016) which are liable to fill with meltwater during margin recession, further increasing [the number] the influence of ice-contact lakes on ice sheet mass balance (Carrivick et al., 2022).
+
+There is a fundamental difference between bedrock dammed ice-contact lakes at the terminus of a topographically confined outlet glacier (hereafter proglacial lakes), and ice-dammed lakes oblique to main ice-flow (hereafter ice-marginal lakes).
+
+Whilst it has been shown that ice surface velocity proximate to (all types of) ice-contact lakes are enhanced (by ~25% (Carrivick et  al., 2022)), it is contended that due to the long-term stability of bedrock dammed lakes (versus the transient nature of valley-side ice-dammed lakes), they are likely to be of greater importance in controlling ice sheet mass balance (Holt et al., 2024).
+
+The force balance at the terminus dictates whether or not the lake has a material impact on dynamics (O’Neel et al., 2005; Pronk et al., 2021), with lake depth and ice thickness being key.
+
+Recent work (Holt et al., 2024) at Isortuarsuup Sermia illustrated the potential for terminus thinning to drive ice flow acceleration at lake-terminating outlet glaciers.
+
+The potential of ice-contact lakes to have a substantial influence on ice sheet mass balance is context dependent. This work aims to illustrate this sensitivity to ‘context’ (topographic setting, present-day dynamics, climate).
+
+## study sites
+We are interested ice-contact lakes that are bedrock controlled, not those that reside in a tributary valley dammed by ice in the main trunk 
+
+Using the inventory of ice marginal lakes (IIML) (How et al., 2021) (which has a nominal date of 2017), lakes were manually selected if the lake is sited at the end of a topographically confined outlet-glacier, and lakes were excluded if it is likely to be ice-dammed, or of if it is a small distributary of a larger fast-flowing marine-terminating outlet.
+
+The selection process is largely subjective. For example, Inderhytten, despite being the 2nd largest lake in the IIML, has a very small ice catchment area and ice-contact length. Its influence on the ice-sheet is likely small, it was therefore excluded.
+
+### surface elevation change
+
+For each glacier a centreline was drawn with reference to satellite imagery and the ice velocity data generated above. Individual ArcticDEM (v.4.1) strips were selected where (a) the acquisition date was between April and October (inclusive) and (b) the if the strips intersected a 5 km buffer around each centreline. The identified DEMs were all clipped to same extent and, using the supplied bit-mask, grid-squares marked as cloud, water and edges were set to null. The DEM with the greatest number of valid measurements was chosen to as the reference DEM to which all other DEMs at that site were coregistered. To identify regions where no elevation change should be detected (i.e., exposed bedrock) a stable terrain mask was generated from all Sentinel-2 scenes that intersect the DEM with acquisition dates in July and August, and with cloud coverage < 10%. For each scene the normalized difference water index (NDWI) was calculated and grid-squares where the median NDWI over time was less than zero, are taken to be stable terrain. These binary masks were reprojected to the same resolution as the DEM prior to coregistration. Coregistration was done using the XDEM python package in two steps: first the method of Nuth & Kaab (2011) for sub-pixel accuracy, followed by a 2d plane tilt correction. The quality of the coregistration was assessed by differencing the newly coregistered DEM with the reference and computing both the normalized median absolute deviation (NMAD), which provides a measure of dispersion, and the median difference over stable terrain (MDOST). The coregistration process aims to bring both of these values close to zero.
+
+NMAD (x)  = 1.4826 × median( | xi - median(x) |)
+
+The coregistered DEMs at each site were filtered to ensure only those with high precision were included in subsequent analyses. A threshold of 1 m was set for MDOST, and 2 m for NMAD.
+Rates of surface elevation change were computed from the stack of coregistered DEMs using the Theil-Sen slope estimator, as this is robust to outliers. 95% confidence intervals were computed about this estimate.
+
 
 ---
 
 ## code
+
+`environment.yml` contains the conda-environment used.
 
 ### data sources
 to download data required for analyses / visualisation

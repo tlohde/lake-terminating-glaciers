@@ -1,5 +1,3 @@
-# paper 2
-
 ## introduction
 Ice-contact lakes influence ice dynamics near the terminus (Baurley et al., 2020; Kirkbride 1993; Sugiyama 2016; Pronk 2021), and this influence can propagate up-glacier (Holt et al., 2024).
 

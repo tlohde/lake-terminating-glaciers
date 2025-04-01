@@ -20,6 +20,13 @@ import os
 import sarsen
 
 
+###
+# with help from 
+# - https://github.com/egagli/generate_sentinel1_local_incidence_angle_maps/blob/882b9940a843c6dc3040f992ad6bed14201a2f5c/generate_lia.py#L61
+# - https://github.com/microsoft/PlanetaryComputerExamples/blob/main/tutorials/rtc-qualitative-assessment.ipynb
+# - and sarsen
+###
+
 def mirror_folder(fs, bucket, folder):
     # from https://github.com/bopen/sarsen/blob/main/notebooks/gamma_wrt_incidence_angle-S1-GRD-IW-RTC-South-of-Redmond.ipynb
     for path, folders, files in fs.walk(f"{bucket}/{folder}"):

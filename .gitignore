@@ -6,6 +6,7 @@ _nothing.md
 src/__pycache__
 results/intermediate/velocity/*.tif*
 results/**/
+!results/figures
 *.gif
 *.html
 *.tif.aux.xml
